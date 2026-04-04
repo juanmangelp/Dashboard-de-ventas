@@ -470,6 +470,15 @@ tr:last-child td { border-bottom: none; }
         </div>
       </div>
       <div class="panel-body collapsed" id="shipping-body">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem">
+          <div class="filtro-group">
+            <span class="filtro-label">Mes</span>
+            <select class="filtro-select" id="shipping-month-select" onchange="renderShippingDetail()" style="min-width:180px">
+              <option value="">Todos los meses</option>
+            </select>
+          </div>
+        </div>
+        <div id="shipping-detail-view"></div>
         <div class="shipping-month-grid" id="shipping-month-content"></div>
       </div>
     </div>
@@ -1091,28 +1100,81 @@ function resetFiltrosVentas() {
 }
 
 // --- IMPRIMIR ---
+let shippingByMonthData = {};
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
 function renderShippingByMonth(byMonth, total) {
   const panel = document.getElementById('shipping-panel');
   const entries = Object.entries(byMonth);
   if (!entries.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
+  shippingByMonthData = byMonth;
 
   document.getElementById('shipping-panel-count').textContent = `${entries.length} meses`;
 
-  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  // Populate month selector
+  const sel = document.getElementById('shipping-month-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Todos los meses</option>' +
+    entries.map(([key]) => {
+      const [year, month] = key.split('-');
+      return `<option value="${key}">${MESES[parseInt(month)-1]} ${year}</option>`;
+    }).join('');
+  if (prev) sel.value = prev;
+
+  renderShippingDetail();
+}
+
+function renderShippingDetail() {
+  const sel = document.getElementById('shipping-month-select').value;
+  const entries = Object.entries(shippingByMonthData);
   const maxCost = Math.max(...entries.map(([,v]) => v.cost));
 
-  document.getElementById('shipping-month-content').innerHTML = entries.map(([key, v]) => {
-    const [year, month] = key.split('-');
+  if (sel) {
+    // Single month detail
+    const v = shippingByMonthData[sel];
+    const [year, month] = sel.split('-');
     const nombre = `${MESES[parseInt(month)-1]} ${year}`;
-    const barPct = Math.round((v.cost / maxCost) * 100);
-    return `<div class="shipping-month-card">
-      <div class="shipping-month-name">${nombre}</div>
-      <div class="shipping-month-cost">$${fmt(v.cost)}</div>
-      <div class="shipping-month-orders">${v.orders} envío${v.orders !== 1 ? 's' : ''} bonificado${v.orders !== 1 ? 's' : ''}</div>
-      <div class="shipping-bar-wrap"><div class="shipping-bar" style="width:${barPct}%"></div></div>
-    </div>`;
-  }).join('');
+    document.getElementById('shipping-detail-view').innerHTML = `
+      <div style="background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border);padding:1.25rem 1.5rem;margin-bottom:1rem">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text3);margin-bottom:8px">${nombre}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Total bonificado</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:500;color:var(--text)">$${fmt(v.cost)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Envíos bonificados</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:500;color:var(--text)">${v.orders}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Costo promedio por envío</div>
+            <div style="font-size:18px;font-weight:400;color:var(--text2)">$${fmt(v.orders > 0 ? v.cost/v.orders : 0)}</div>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('shipping-month-content').style.display = 'none';
+  } else {
+    // All months grid
+    document.getElementById('shipping-detail-view').innerHTML = '';
+    document.getElementById('shipping-month-content').style.display = 'grid';
+    document.getElementById('shipping-month-content').innerHTML = entries.map(([key, v]) => {
+      const [year, month] = key.split('-');
+      const nombre = `${MESES[parseInt(month)-1]} ${year}`;
+      const barPct = Math.round((v.cost / maxCost) * 100);
+      return `<div class="shipping-month-card" onclick="selectShippingMonth('${key}')" style="cursor:pointer">
+        <div class="shipping-month-name">${nombre}</div>
+        <div class="shipping-month-cost">$${fmt(v.cost)}</div>
+        <div class="shipping-month-orders">${v.orders} envío${v.orders !== 1 ? 's' : ''} bonificado${v.orders !== 1 ? 's' : ''}</div>
+        <div class="shipping-bar-wrap"><div class="shipping-bar" style="width:${barPct}%"></div></div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function selectShippingMonth(key) {
+  document.getElementById('shipping-month-select').value = key;
+  renderShippingDetail();
 }
 
 let bsData = [];

@@ -253,7 +253,7 @@ def build_summary(days=None, date_from=None, date_to=None):
     total_revenue = 0.0
     total_shipping_cost = 0.0
     shipping_orders = 0
-    shipping_by_month = {}  # "YYYY-MM" -> {cost, orders}
+    shipping_by_month = {}  # "YYYY-MM" -> {cost, orders} — siempre historial completo
     for order in period_orders:
         total_revenue += float(order.get("total", 0) or 0)
         cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
@@ -262,7 +262,14 @@ def build_summary(days=None, date_from=None, date_to=None):
         if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
             total_shipping_cost += cost_owner
             shipping_orders += 1
-            month_key = order.get("created_at", "")[:7]  # "YYYY-MM"
+
+    # Envios por mes: siempre sobre historial completo, ignorando el periodo seleccionado
+    for order in all_orders:
+        cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
+        cost_customer = float(order.get("shipping_cost_customer", 0) or 0)
+        pickup_type = order.get("shipping_pickup_type", "")
+        if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
+            month_key = order.get("created_at", "")[:7]
             if month_key:
                 if month_key not in shipping_by_month:
                     shipping_by_month[month_key] = {"cost": 0.0, "orders": 0}
