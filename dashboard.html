@@ -25,7 +25,12 @@ header { background: var(--cream); border-bottom: 1px solid var(--border2); padd
 .logo-wrap { border-right: 1px solid var(--border2); padding-right: 2rem; height: 80px; display: flex; align-items: center; }
 .logo-wrap img { height: 52px; width: auto; }
 .header-center { flex: 1; text-align: center; font-family: 'Cormorant Garamond', serif; font-size: 17px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text2); }
-.header-controls { border-left: 1px solid var(--border2); padding-left: 2rem; height: 80px; display: flex; align-items: center; gap: 10px; }
+.header-controls { border-left: 1px solid var(--border2); padding-left: 2rem; height: 80px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.date-range-wrap { display: flex; align-items: center; gap: 6px; }
+.date-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
+input[type="date"] { font-family: 'Jost', sans-serif; font-size: 12px; color: var(--text); background: var(--warm-white); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 6px 10px; outline: none; cursor: pointer; }
+input[type="date"]:focus { border-color: var(--mocha); }
+.period-separator { font-size: 11px; color: var(--text3); }
 select { font-family: 'Jost', sans-serif; font-size: 12px; color: var(--text); background: var(--warm-white); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 7px 28px 7px 12px; cursor: pointer; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239c7b6e' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-color: var(--warm-white); }
 button { font-family: 'Jost', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--warm-white); background: var(--mocha); border: none; border-radius: var(--radius-sm); padding: 8px 18px; cursor: pointer; transition: background 0.2s; }
 button:hover { background: var(--mocha-dark); }
@@ -260,11 +265,17 @@ tr:last-child td { border-bottom: none; }
   </div>
   <div class="header-center">Dashboard de ventas</div>
   <div class="header-controls">
-    <select id="period-select">
+    <select id="period-select" onchange="onPeriodSelect()">
       <option value="30">30 días</option>
       <option value="60">60 días</option>
       <option value="90" selected>90 días</option>
+      <option value="custom">Rango personalizado</option>
     </select>
+    <div class="date-range-wrap" id="date-range-wrap" style="display:none">
+      <input type="date" id="date-from">
+      <span class="period-separator">→</span>
+      <input type="date" id="date-to">
+    </div>
     <button id="refresh-btn">Actualizar</button>
   </div>
 </header>
@@ -612,8 +623,33 @@ function stopProgressPolling() {
   if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
 }
 
+function onPeriodSelect() {
+  const val = document.getElementById('period-select').value;
+  const wrap = document.getElementById('date-range-wrap');
+  if (val === 'custom') {
+    wrap.style.display = 'flex';
+    // Default: last 30 days
+    const today = new Date();
+    const from = new Date(today); from.setDate(from.getDate() - 30);
+    document.getElementById('date-to').value = today.toISOString().split('T')[0];
+    document.getElementById('date-from').value = from.toISOString().split('T')[0];
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+function getQueryParams() {
+  const val = document.getElementById('period-select').value;
+  if (val === 'custom') {
+    const from = document.getElementById('date-from').value;
+    const to = document.getElementById('date-to').value;
+    if (from && to) return `date_from=${from}&date_to=${to}`;
+  }
+  return `days=${val}`;
+}
+
 async function loadData() {
-  const days = parseInt(document.getElementById('period-select').value);
+  const params = getQueryParams();
   document.getElementById('loading-screen').style.display = 'flex';
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('error-screen').style.display = 'none';
@@ -623,7 +659,7 @@ async function loadData() {
   document.getElementById('loading-text').textContent = 'Conectando con Tiendanube...';
   startProgressPolling();
   try {
-    const res = await fetch(`${API}/summary?days=${days}`);
+    const res = await fetch(`${API}/summary?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     currentData = await res.json();
     stopProgressPolling();
@@ -1303,7 +1339,7 @@ function imprimirVentas() {
   document.getElementById('alertas-panel').style.display = '';
 }
 
-document.getElementById('period-select').addEventListener('change', loadData);
+// period-select change handled by onPeriodSelect()
 document.getElementById('refresh-btn').addEventListener('click', async () => {
   await fetch(`${API}/invalidate`).catch(() => {});
   loadData();

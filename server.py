@@ -86,15 +86,20 @@ def api_get(url):
     with urlopen(req) as resp:
         return json.loads(resp.read())
 
-def fetch_orders(days=None, progress_range=(0,50), label=""):
+def fetch_orders(days=None, date_from=None, date_to=None, progress_range=(0,50), label=""):
     results = []
     page = 1
     base = f"{BASE_URL}/orders?payment_status=paid&per_page=200"
-    if days:
+    if date_from:
+        base += f"&created_at_min={date_from}"
+        if date_to:
+            base += f"&created_at_max={date_to}"
+    elif days:
         since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        base += f"&created_at_min={since}"
     else:
         since = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
-    base += f"&created_at_min={since}"
+        base += f"&created_at_min={since}"
     p_start, p_end = progress_range
     while True:
         data = api_get(f"{base}&page={page}")
@@ -205,14 +210,22 @@ def _calc_historical_rate(dates):
     except:
         return 0.0
 
-def build_summary(days):
+def build_summary(days=None, date_from=None, date_to=None):
     set_progress(0, "Iniciando...")
     products = fetch_products()
     set_progress(8, "Procesando productos...")
     variant_map, product_names = build_variant_map(products)
 
-    set_progress(10, f"Cargando pedidos últimos {days} días...")
-    period_orders = fetch_orders(days=days, progress_range=(10,45), label=f"Pedidos {days}d")
+    if date_from and date_to:
+        from datetime import datetime as _dt
+        d1 = _dt.strptime(date_from, "%Y-%m-%d")
+        d2 = _dt.strptime(date_to, "%Y-%m-%d")
+        days = max((d2 - d1).days, 1)
+        label_period = f"{date_from} → {date_to}"
+    else:
+        label_period = f"últimos {days} días"
+    set_progress(10, f"Cargando pedidos {label_period}...")
+    period_orders = fetch_orders(days=days if not date_from else None, date_from=date_from, date_to=date_to, progress_range=(10,45), label=f"Pedidos")
 
     set_progress(45, "Cargando historial completo...")
     all_orders = fetch_orders(days=None, progress_range=(45,88), label="Historial")
