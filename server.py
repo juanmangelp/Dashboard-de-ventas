@@ -238,8 +238,17 @@ def build_summary(days):
     # Aggregate period sales by (product_id, variant_id)
     sales = defaultdict(lambda: {"units": 0, "revenue": 0.0, "product_name": "", "variant_name": "", "sale_dates": [], "all_dates": []})
     total_revenue = 0.0
+    total_shipping_cost = 0.0  # costo de envios bonificados absorbidos por la tienda
+    shipping_orders = 0
     for order in period_orders:
         total_revenue += float(order.get("total", 0) or 0)
+        # Envio bonificado: lo paga la tienda, el cliente paga $0, y es envio a domicilio
+        cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
+        cost_customer = float(order.get("shipping_cost_customer", 0) or 0)
+        pickup_type = order.get("shipping_pickup_type", "")
+        if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
+            total_shipping_cost += cost_owner
+            shipping_orders += 1
         for item in order.get("products", []):
             pid = item.get("product_id")
             vid = item.get("variant_id")
@@ -322,7 +331,9 @@ def build_summary(days):
         "total_revenue": round(total_revenue, 2),
         "ticket_promedio": round(total_revenue / total_orders, 2) if total_orders else 0,
         "products": out,
-        "stagnant": stagnant
+        "stagnant": stagnant,
+        "shipping_cost": round(total_shipping_cost, 2),
+        "shipping_orders": shipping_orders
     }
 
 _cache = {}

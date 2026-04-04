@@ -36,7 +36,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 main { max-width: 1300px; margin: 0 auto; padding: 2rem; }
 
 /* STATS */
-.stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 1.75rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 1.75rem; }
 .stat-card { background: var(--warm-white); border-radius: var(--radius); padding: 1.4rem 1.5rem; border: 1px solid var(--border); position: relative; overflow: hidden; }
 .stat-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--mocha), transparent); opacity: 0.4; }
 .stat-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); margin-bottom: 10px; }
@@ -290,6 +290,11 @@ tr:last-child td { border-bottom: none; }
         <div class="stat-label">Ticket promedio</div>
         <div class="stat-value" id="s-ticket">—</div>
         <div class="stat-sub" id="s-ticket-sub"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Envíos bonificados</div>
+        <div class="stat-value" id="s-shipping">—</div>
+        <div class="stat-sub" id="s-shipping-sub"></div>
       </div>
     </div>
 
@@ -625,6 +630,8 @@ function renderAll() {
   document.getElementById('s-revenue-sub').textContent = `$${fmt(d.total_revenue/d.days)}/día`;
   document.getElementById('s-ticket').textContent = '$' + fmt(d.ticket_promedio);
   document.getElementById('s-ticket-sub').textContent = `últimos ${d.days} días`;
+  document.getElementById('s-shipping').textContent = '$' + fmt(d.shipping_cost || 0);
+  document.getElementById('s-shipping-sub').textContent = `${d.shipping_orders || 0} envíos · $${fmt((d.shipping_cost||0)/d.days)}/día`;
   renderAlertas(d.products);
   populateFiltros(d.products, d.stagnant || []);
   renderEstancado(d.stagnant || []);
