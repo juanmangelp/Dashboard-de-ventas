@@ -648,8 +648,15 @@ function getQueryParams() {
   return `days=${val}`;
 }
 
+let lastParams = '';
+
 async function loadData() {
   const params = getQueryParams();
+  // Invalidate cache if period changed
+  if (params !== lastParams && lastParams !== '') {
+    await fetch(`${API}/invalidate`).catch(() => {});
+  }
+  lastParams = params;
   document.getElementById('loading-screen').style.display = 'flex';
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('error-screen').style.display = 'none';

@@ -228,7 +228,7 @@ def build_summary(days=None, date_from=None, date_to=None):
     period_orders = fetch_orders(days=days if not date_from else None, date_from=date_from, date_to=date_to, progress_range=(10,45), label=f"Pedidos")
 
     set_progress(45, "Cargando historial completo...")
-    all_orders = fetch_orders(days=None, progress_range=(45,88), label="Historial")
+    all_orders = fetch_orders(days=None, date_from=None, date_to=None, progress_range=(45,88), label="Historial")
 
     # Variants with sales in the period (for rotation metrics)
     period_variants_sold = get_variants_with_sales(period_orders)
