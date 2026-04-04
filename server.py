@@ -2,6 +2,8 @@ import http.server
 import json
 import os
 import threading
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.request import Request, urlopen
@@ -12,6 +14,58 @@ TOKEN = "c8e480ded10aed4f9e1dd31fb15f8ba658c3b72b"
 BASE_URL = f"https://api.tiendanube.com/v1/{STORE_ID}"
 import os
 PORT = int(os.environ.get("PORT", 8765))
+
+# Auth
+USERNAME = "juanman"
+PASSWORD_HASH = hashlib.sha256("Emilia27Aurora07!".encode()).hexdigest()
+SESSIONS = set()  # active session tokens
+
+def check_session(handler):
+    cookie = handler.headers.get("Cookie", "")
+    for part in cookie.split(";"):
+        part = part.strip()
+        if part.startswith("sp_session="):
+            token = part[len("sp_session="):]
+            if token in SESSIONS:
+                return True
+    return False
+
+LOGIN_HTML = '''<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>San Pretta · Acceso</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Jost:wght@300;400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Jost", sans-serif; background: #f5ede6; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.card { background: #fdf8f5; border: 1px solid rgba(156,123,110,0.18); border-radius: 14px; padding: 2.5rem 2rem; width: 100%; max-width: 360px; }
+.title { font-family: "Cormorant Garamond", serif; font-size: 28px; font-weight: 500; color: #3a2a24; text-align: center; margin-bottom: 0.25rem; }
+.subtitle { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: #b09080; text-align: center; margin-bottom: 2rem; }
+label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #b09080; display: block; margin-bottom: 4px; margin-top: 1rem; }
+input { width: 100%; font-family: "Jost", sans-serif; font-size: 13px; padding: 9px 12px; border: 1px solid rgba(156,123,110,0.32); border-radius: 8px; background: #f5ede6; color: #3a2a24; outline: none; }
+input:focus { border-color: #9c7b6e; }
+button { width: 100%; margin-top: 1.5rem; font-family: "Jost", sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: #fdf8f5; background: #7a5c50; border: none; border-radius: 8px; padding: 11px; cursor: pointer; }
+button:hover { background: #9c7b6e; }
+.error { font-size: 12px; color: #a03030; text-align: center; margin-top: 1rem; background: #faeaea; padding: 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="title">San Pretta</div>
+  <div class="subtitle">Dashboard de ventas</div>
+  <form method="POST" action="/login">
+    <label>Usuario</label>
+    <input type="text" name="username" autocomplete="username" required>
+    <label>Contraseña</label>
+    <input type="password" name="password" autocomplete="current-password" required>
+    <button type="submit">Ingresar</button>
+    {error}
+  </form>
+</div>
+</body>
+</html>'''
 
 HEADERS = {
     "Authentication": f"bearer {TOKEN}",
@@ -280,7 +334,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
     def do_OPTIONS(self):
         self.send_response(200); self.send_cors(); self.end_headers()
+
+    def do_POST(self):
+        if self.path == "/login":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode()
+            params = {}
+            for part in body.split("&"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    params[k] = v.replace("+", " ").replace("%21", "!")
+            username = params.get("username", "")
+            password = params.get("password", "")
+            pw_hash = hashlib.sha256(password.encode()).hexdigest()
+            if username == USERNAME and pw_hash == PASSWORD_HASH:
+                token = secrets.token_hex(32)
+                SESSIONS.add(token)
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Set-Cookie", f"sp_session={token}; Path=/; HttpOnly; SameSite=Lax")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                html = LOGIN_HTML.replace("{error}", '<div class="error">Usuario o contraseña incorrectos</div>')
+                self.wfile.write(html.encode())
+        else:
+            self.send_response(404); self.end_headers()
     def do_GET(self):
+        # Public: login page
+        if self.path == "/login":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(LOGIN_HTML.replace("{error}", "").encode())
+            return
+        # Protected: everything else
+        if not check_session(self):
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.end_headers()
+            return
         if self.path == "/": self.serve_file("dashboard.html", "text/html")
         elif self.path == "/progress":
             data = json.dumps(_progress).encode()
