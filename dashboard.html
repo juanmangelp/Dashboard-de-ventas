@@ -101,6 +101,15 @@ main { max-width: 1300px; margin: 0 auto; padding: 2rem; }
 .estancado-sin-ventas { font-size: 10px; color: var(--text3); margin-top: 2px; }
 .no-items { text-align: center; padding: 2rem 0; color: var(--text3); font-size: 13px; }
 
+/* Envios por mes */
+.shipping-month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 1rem; }
+.shipping-month-card { background: var(--cream); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem 1.1rem; }
+.shipping-month-name { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); margin-bottom: 6px; }
+.shipping-month-cost { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
+.shipping-month-orders { font-size: 11px; color: var(--text3); }
+.shipping-bar-wrap { height: 3px; background: var(--border); border-radius: 3px; margin-top: 8px; }
+.shipping-bar { height: 3px; background: var(--mocha); border-radius: 3px; }
+
 /* Best sellers */
 .bs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 1rem; }
 .bs-card { background: var(--warm-white); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; position: relative; transition: box-shadow 0.15s; }
@@ -440,6 +449,20 @@ tr:last-child td { border-bottom: none; }
       </div><!-- /ventas-body -->
     </div><!-- /main-table-panel -->
 
+    <!-- Envios bonificados por mes -->
+    <div class="panel" id="shipping-panel" style="display:none">
+      <div class="panel-title panel-toggle" onclick="togglePanel('shipping')">
+        Envíos bonificados por mes
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="panel-title-count" id="shipping-panel-count"></span>
+          <span class="toggle-arrow">▾</span>
+        </div>
+      </div>
+      <div class="panel-body collapsed" id="shipping-body">
+        <div class="shipping-month-grid" id="shipping-month-content"></div>
+      </div>
+    </div>
+
     <!-- Best Sellers -->
     <div class="panel" id="bs-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('bs')">
@@ -630,14 +653,16 @@ function renderAll() {
   document.getElementById('s-revenue-sub').textContent = `$${fmt(d.total_revenue/d.days)}/día`;
   document.getElementById('s-ticket').textContent = '$' + fmt(d.ticket_promedio);
   document.getElementById('s-ticket-sub').textContent = `últimos ${d.days} días`;
-  document.getElementById('s-shipping').textContent = '$' + fmt(d.shipping_cost || 0);
-  document.getElementById('s-shipping-sub').textContent = `${d.shipping_orders || 0} envíos · $${fmt((d.shipping_cost||0)/d.days)}/día`;
+  const shippingPerMonth = (d.shipping_cost || 0) / d.days * 30;
+  document.getElementById('s-shipping').textContent = '$' + fmt(shippingPerMonth);
+  document.getElementById('s-shipping-sub').textContent = `${d.shipping_orders || 0} envíos · promedio/mes`;
   renderAlertas(d.products);
   populateFiltros(d.products, d.stagnant || []);
   renderEstancado(d.stagnant || []);
   renderTable(d.products);
   renderPedido(d.products);
   renderBestSellers(d.products, d.days);
+  renderShippingByMonth(d.shipping_by_month || {}, d.shipping_cost || 0);
 }
 
 // --- POPULATE FILTROS ---
@@ -1023,6 +1048,30 @@ function resetFiltrosVentas() {
 }
 
 // --- IMPRIMIR ---
+function renderShippingByMonth(byMonth, total) {
+  const panel = document.getElementById('shipping-panel');
+  const entries = Object.entries(byMonth);
+  if (!entries.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  document.getElementById('shipping-panel-count').textContent = `${entries.length} meses`;
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const maxCost = Math.max(...entries.map(([,v]) => v.cost));
+
+  document.getElementById('shipping-month-content').innerHTML = entries.map(([key, v]) => {
+    const [year, month] = key.split('-');
+    const nombre = `${MESES[parseInt(month)-1]} ${year}`;
+    const barPct = Math.round((v.cost / maxCost) * 100);
+    return `<div class="shipping-month-card">
+      <div class="shipping-month-name">${nombre}</div>
+      <div class="shipping-month-cost">$${fmt(v.cost)}</div>
+      <div class="shipping-month-orders">${v.orders} envío${v.orders !== 1 ? 's' : ''} bonificado${v.orders !== 1 ? 's' : ''}</div>
+      <div class="shipping-bar-wrap"><div class="shipping-bar" style="width:${barPct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
 let bsData = [];
 let bsPeriodo = 'mes';
 let bsDays = 90;
