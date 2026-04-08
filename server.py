@@ -901,6 +901,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         pageSize=5
                     ).execute()
                     result["archivos_en_carpeta"] = [f["name"] for f in res.get("files", [])]
+                    # Try a test write
+                    try:
+                        from googleapiclient.http import MediaInMemoryUpload as MIU
+                        test_media = MIU(b"test", mimetype="text/plain", resumable=False)
+                        tf = svc.files().create(
+                            body={"name": "_test_write.txt", "parents": [GDRIVE_FOLDER_ID]},
+                            media_body=test_media, fields="id"
+                        ).execute()
+                        svc.files().delete(fileId=tf["id"]).execute()
+                        result["test_escritura"] = "OK"
+                    except Exception as e:
+                        result["test_escritura_error"] = str(e)
             except Exception as e:
                 result["drive_error"] = str(e)
             # Check cache
@@ -1022,8 +1034,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             set_progress(0, "Iniciando...")
             _cache[key] = build_summary(days)
             set_progress(100, "Listo")
-            # Save to Drive in background
-            threading.Thread(target=drive_save_cache, args=(_cache[key],), daemon=True).start()
+            # Save to Drive
+            try:
+                drive_save_cache(_cache[key])
+            except Exception as e:
+                print(f"  [Drive] Error guardando: {e}")
         data = json.dumps(_cache[key]).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
