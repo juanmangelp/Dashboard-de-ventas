@@ -6,9 +6,6 @@ import hashlib
 import secrets
 import io
 import csv
-import tempfile
-import email
-import email.parser
 from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.request import Request, urlopen
