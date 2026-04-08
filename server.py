@@ -834,6 +834,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(LOGIN_HTML.replace("{error}", "").encode())
             return
+        # Public: diagnostico
+        if self.path == "/diagnostico":
+            result = {}
+            result["GITHUB_TOKEN_len"] = len(GITHUB_TOKEN)
+            result["cache_keys"] = list(_cache.keys())
+            try:
+                gist_id = _find_gist_id()
+                result["gist_id"] = gist_id or "no encontrado"
+                if gist_id:
+                    result["gist_url"] = f"https://gist.github.com/{gist_id}"
+            except Exception as e:
+                result["gist_error"] = str(e)
+            data = json.dumps(result, indent=2, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors(); self.end_headers()
+            self.wfile.write(data)
+            return
         # Protected: everything else
         if not check_session(self):
             self.send_response(302)
