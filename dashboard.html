@@ -290,7 +290,7 @@ tr:last-child td { border-bottom: none; }
         <span id="csv-label-text">CSV Notificaciones</span>
         <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvLoaded(this)">
       </label>
-      <select id="dias-filtro-csv" title="Período de notificaciones a considerar" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
+      <select id="dias-filtro-csv" title="Período de notificaciones a considerar" onchange="onDiasFiltroChange()" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
         <option value="7">Notif. 7d</option>
         <option value="14">Notif. 14d</option>
         <option value="30" selected>Notif. 30d</option>
@@ -505,10 +505,10 @@ tr:last-child td { border-bottom: none; }
         <div style="margin-bottom:1.5rem">
           <div style="display:flex;align-items:center;gap:18px;margin-bottom:1rem">
             <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
-              <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#7a5c50"></span> Asumido por la tienda
+              <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#c0392b"></span> Asumido por la tienda
             </div>
             <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
-              <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#c4a99e"></span> Pagado por el cliente
+              <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#27ae60"></span> Pagado por el cliente
             </div>
           </div>
           <div id="shipping-chart-wrap" style="width:100%;overflow-x:auto">
@@ -638,6 +638,8 @@ tr:last-child td { border-bottom: none; }
 const API = window.location.origin;
 let currentData = null;
 let demandCsvContent = null; // base64 content of uploaded CSV
+let demandData = {}; // parsed: "ProductName|||VariantName" -> {total, pendientes}
+let diasFiltroCsvActual = 30;
 
 function onCsvLoaded(input) {
   const file = input.files[0];
@@ -650,6 +652,54 @@ function onCsvLoaded(input) {
     document.querySelector('.export-csv-label').classList.add('loaded');
   };
   reader.readAsDataURL(file);
+}
+
+function parseDemandCsv(dataUrl, diasFiltro) {
+  try {
+    const base64 = dataUrl.split(',')[1];
+    const text = decodeURIComponent(escape(atob(base64)));
+    const lines = text.split('\n');
+    if (!lines.length) return {};
+    // Detect separator
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const headers = lines[0].replace(/^\uFEFF/, '').split(sep).map(h => h.replace(/"/g,'').trim());
+    const idx = (name) => headers.indexOf(name);
+    const cutoff = diasFiltro > 0 ? new Date(Date.now() - diasFiltro * 86400000) : null;
+    // raw[key][email] = status
+    const raw = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(sep).map(c => c.replace(/"/g,'').trim());
+      if (cols.length < 4) continue;
+      if (cutoff) {
+        const fecha = new Date(cols[idx('createdDate')]);
+        if (isNaN(fecha) || fecha < cutoff) continue;
+      }
+      const key = cols[idx('productName')] + '|||' + cols[idx('productVariantName')];
+      const email = (cols[idx('email')] || '').toLowerCase();
+      const status = cols[idx('status')] || '';
+      if (!email) continue;
+      if (!raw[key]) raw[key] = {};
+      if (!raw[key][email] || status === 'unsent') raw[key][email] = status;
+    }
+    const result = {};
+    for (const [key, emails] of Object.entries(raw)) {
+      result[key] = {
+        total: Object.keys(emails).length,
+        pendientes: Object.values(emails).filter(s => s === 'unsent').length
+      };
+    }
+    return result;
+  } catch(e) {
+    console.error('Error parseando CSV demanda:', e);
+    return {};
+  }
+}
+
+function onDiasFiltroChange() {
+  if (!demandCsvContent) return;
+  diasFiltroCsvActual = parseInt(document.getElementById('dias-filtro-csv').value) || 0;
+  demandData = parseDemandCsv(demandCsvContent, diasFiltroCsvActual);
+  if (currentData) renderTable(currentData.products);
 }
 
 async function exportarExcel() {
@@ -1134,14 +1184,38 @@ function renderEstancadoCards(items) {
 }
 
 // --- TABLA ---
+function demandBadge(pname, vname) {
+  if (!Object.keys(demandData).length) return '';
+  const key = pname + '|||' + vname;
+  const d = demandData[key];
+  if (!d || d.total === 0) return '';
+  if (d.pendientes > 0) {
+    const urgente = d.pendientes >= 5;
+    return `<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:600;letter-spacing:0.05em;background:${urgente?'#faeaea':'#fff3e0'};color:${urgente?'#c0392b':'#e67e22'}">
+      ${urgente?'🔥':'👁'} ${d.pendientes} esperando
+    </span>`;
+  }
+  return `<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:500;letter-spacing:0.05em;background:#f5f5f5;color:#999">
+    ${d.total} notif.
+  </span>`;
+}
+
 function renderTable(products) {
   const tbody = document.getElementById('main-table');
   let html = '';
   products.forEach(p => {
     const pid = `p${p.id}`;
-    const hasVariants = p.variants.some(v => v.variant_name);
+    // Check if any variant has demand
+    const hasDemand = Object.keys(demandData).some(k => k.startsWith(p.name + '|||'));
+    const totalPendientes = p.variants.reduce((acc, v) => {
+      const d = demandData[p.name + '|||' + v.variant_name];
+      return acc + (d ? d.pendientes : 0);
+    }, 0);
+    const demandSummary = totalPendientes > 0
+      ? `<span style="margin-left:8px;font-size:10px;color:${totalPendientes>=5?'#c0392b':'#e67e22'};font-weight:600">${totalPendientes >= 5 ? '🔥' : '👁'} ${totalPendientes} esperando</span>`
+      : '';
     html += `<tr class="product-row" onclick="toggleProduct('${pid}')">
-      <td><i class="toggle-icon" id="icon-${pid}">▶</i>${p.name}</td>
+      <td><i class="toggle-icon" id="icon-${pid}">▶</i>${p.name}${demandSummary}</td>
       <td class="r">${p.units}</td>
       <td class="r">${(p.units/currentData.days).toFixed(1)}</td>
       <td class="r">$${fmt(p.revenue)}</td>
@@ -1149,13 +1223,14 @@ function renderTable(products) {
     </tr>`;
     p.variants.forEach(v => {
       if (!v.variant_name) return;
+      const db = demandBadge(p.name, v.variant_name);
       html += `<tr class="variant-row hidden"
         data-pid="${pid}"
         data-search="${p.name.toLowerCase()} ${v.variant_name.toLowerCase()}"
         data-cat="${extractCategoria(p.name)}"
         data-talle="${v.variant_name}"
         data-estado="${v.dias_stock === null ? 'ok' : v.dias_stock < 7 ? 'urgente' : v.dias_stock < 14 ? 'reponer' : 'ok'}">
-        <td>${v.variant_name}</td>
+        <td>${v.variant_name}${db}</td>
         <td class="r">${v.units}</td>
         <td class="r">${v.rate}</td>
         <td class="r">$${fmt(v.revenue)}</td>
@@ -1270,14 +1345,14 @@ function renderShippingChart(entries) {
         {
           label: 'Tienda',
           data: tienda,
-          backgroundColor: '#7a5c50',
+          backgroundColor: '#c0392b',
           borderRadius: 3,
           borderSkipped: false,
         },
         {
           label: 'Cliente',
           data: cliente,
-          backgroundColor: '#c4a99e',
+          backgroundColor: '#27ae60',
           borderRadius: 3,
           borderSkipped: false,
         }
@@ -1334,11 +1409,11 @@ function renderShippingDetail() {
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem">
           <div>
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Asumido por la tienda</div>
-            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#7a5c50">$${fmt(v.costo_tienda||0)}</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#c0392b">$${fmt(v.costo_tienda||0)}</div>
           </div>
           <div>
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Pagado por el cliente</div>
-            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#b09080">$${fmt(v.costo_cliente||0)}</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#27ae60">$${fmt(v.costo_cliente||0)}</div>
           </div>
           <div>
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Envíos con cargo a tienda</div>
@@ -1365,7 +1440,7 @@ function renderShippingDetail() {
         <div class="shipping-month-cost" style="color:#7a5c50">$${fmt(v.costo_tienda||0)}</div>
         <div class="shipping-month-orders" style="color:#b09080">+ $${fmt(v.costo_cliente||0)} cliente</div>
         <div class="shipping-bar-wrap" style="height:5px;margin-top:8px">
-          <div style="height:5px;border-radius:3px;background:linear-gradient(to right,#7a5c50 ${pctTienda}%,#c4a99e ${pctTienda}%)"></div>
+          <div style="height:5px;border-radius:3px;background:linear-gradient(to right,#c0392b ${pctTienda}%,#27ae60 ${pctTienda}%)"></div>
         </div>
       </div>`;
     }).join('');
