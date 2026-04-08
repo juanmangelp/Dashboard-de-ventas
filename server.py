@@ -19,6 +19,104 @@ try:
 except ImportError:
     OPENPYXL_OK = False
 
+# Google Drive cache
+GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "1sodHQivHnvJU8lK6dUjlZvSeKRWl0S3m")
+GDRIVE_CACHE_FILENAME = "sanpretta_cache.json"
+GDRIVE_OK = False
+_gdrive_service = None
+
+try:
+    import google.auth
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build as gdrive_build
+    from googleapiclient.http import MediaIoBaseDownload, MediaInMemoryUpload
+    GDRIVE_OK = True
+except ImportError:
+    pass
+
+def _get_drive_service():
+    global _gdrive_service
+    if _gdrive_service:
+        return _gdrive_service
+    if not GDRIVE_OK:
+        return None
+    try:
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+        if not creds_json:
+            print("  [Drive] GOOGLE_CREDENTIALS_JSON no configurada")
+            return None
+        creds_data = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_data,
+            scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        _gdrive_service = gdrive_build("drive", "v3", credentials=creds, cache_discovery=False)
+        print("  [Drive] Conectado OK")
+        return _gdrive_service
+    except Exception as e:
+        print(f"  [Drive] Error conectando: {e}")
+        return None
+
+def drive_load_cache():
+    """Download cache JSON from Drive. Returns dict or None."""
+    svc = _get_drive_service()
+    if not svc:
+        return None
+    try:
+        res = svc.files().list(
+            q=f"name='{GDRIVE_CACHE_FILENAME}' and '{GDRIVE_FOLDER_ID}' in parents and trashed=false",
+            fields="files(id,name,modifiedTime)",
+            pageSize=1
+        ).execute()
+        files = res.get("files", [])
+        if not files:
+            print("  [Drive] Sin caché previo")
+            return None
+        file_id = files[0]["id"]
+        modified = files[0].get("modifiedTime", "")
+        print(f"  [Drive] Cargando caché (modificado: {modified[:10]})")
+        buf = io.BytesIO()
+        dl = MediaIoBaseDownload(buf, svc.files().get_media(fileId=file_id))
+        done = False
+        while not done:
+            _, done = dl.next_chunk()
+        buf.seek(0)
+        data = json.loads(buf.read().decode())
+        print(f"  [Drive] Caché cargado OK ({len(data.get('products', []))} productos)")
+        return data
+    except Exception as e:
+        print(f"  [Drive] Error cargando caché: {e}")
+        return None
+
+def drive_save_cache(data):
+    """Upload/update cache JSON to Drive."""
+    svc = _get_drive_service()
+    if not svc:
+        return
+    try:
+        content_bytes = json.dumps(data, ensure_ascii=False).encode()
+        media = MediaInMemoryUpload(content_bytes, mimetype="application/json", resumable=False)
+        # Check if file exists
+        res = svc.files().list(
+            q=f"name='{GDRIVE_CACHE_FILENAME}' and '{GDRIVE_FOLDER_ID}' in parents and trashed=false",
+            fields="files(id)",
+            pageSize=1
+        ).execute()
+        files = res.get("files", [])
+        if files:
+            svc.files().update(fileId=files[0]["id"], media_body=media).execute()
+            print("  [Drive] Caché actualizado")
+        else:
+            svc.files().create(
+                body={"name": GDRIVE_CACHE_FILENAME, "parents": [GDRIVE_FOLDER_ID]},
+                media_body=media,
+                fields="id"
+            ).execute()
+            print("  [Drive] Caché creado en Drive")
+    except Exception as e:
+        print(f"  [Drive] Error guardando caché: {e}")
+
+
 STORE_ID = "87884"
 TOKEN = "c8e480ded10aed4f9e1dd31fb15f8ba658c3b72b"
 BASE_URL = f"https://api.tiendanube.com/v1/{STORE_ID}"
@@ -550,8 +648,8 @@ def build_export_xlsx(summary_data, demand):
 
     # Sheet 3: Stock quieto (estancado)
     ws3 = wb.create_sheet("Stock Quieto")
-    h3 = ["Artículo", "Talle", "Stock", "Días en Catálogo", "Estado"]
-    w3 = [40, 8, 8, 16, 14]
+    h3 = ["Artículo", "Talle", "Stock", "Precio", "Precio Promo", "Días en Catálogo", "Estado"]
+    w3 = [40, 8, 8, 12, 13, 16, 14]
     for col_idx, (h, w) in enumerate(zip(h3, w3), 1):
         cell = ws3.cell(row=1, column=col_idx, value=h)
         cell.font = header_font
@@ -567,14 +665,20 @@ def build_export_xlsx(summary_data, demand):
         "nuevo": None,
     }
 
+    price_fmt = '#,##0'
+
     stagnant = summary_data.get("stagnant", [])
     for r3, item in enumerate(stagnant, 2):
         tipo = item.get("tipo", "nuevo")
         row_fill3 = tipo_fill.get(tipo)
+        price = item.get("price", None) or None
+        promo = item.get("promo_price", None) or None
         vals = [
             item.get("product", ""),
             item.get("variant", ""),
             item.get("stock", 0),
+            price,
+            promo,
             item.get("days_in_catalog", None),
             tipo_label.get(tipo, tipo),
         ]
@@ -585,8 +689,106 @@ def build_export_xlsx(summary_data, demand):
             cell.alignment = center_align if c_idx > 1 else left_align
             if row_fill3:
                 cell.fill = row_fill3
+            if c_idx in (4, 5) and val:
+                cell.number_format = price_fmt
 
     ws3.freeze_panes = "A2"
+
+
+    # Sheet 4: Predicción de reposición
+    ws4 = wb.create_sheet("Reposición Sugerida")
+
+    # Horizonte configurable — default 60 días, pasado como parámetro opcional en summary_data
+    horizonte = summary_data.get("horizonte_reposicion", 60)
+
+    h4 = ["Artículo", "Talle", "Stock Actual", f"Ventas Proy. ({horizonte}d)",
+          "Demanda Reprimida", "Reposición Sugerida", "Prioridad"]
+    w4 = [40, 8, 12, 18, 18, 20, 12]
+    for col_idx, (h, w) in enumerate(zip(h4, w4), 1):
+        cell = ws4.cell(row=1, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = border
+        ws4.column_dimensions[get_column_letter(col_idx)].width = w
+    ws4.row_dimensions[1].height = 32
+
+    reposicion_rows = []
+    for product in summary_data.get("products", []):
+        pname = product["name"]
+        for v in product.get("variants", []):
+            vname = v.get("variant_name", "")
+            stock = v.get("stock", 0)
+            hist_rate = v.get("historical_rate", 0) or v.get("rate", 0) or 0
+
+            ventas_proyectadas = round(hist_rate * horizonte)
+
+            d_key = (pname, vname)
+            dem = demand.get(d_key, {})
+            demanda_reprimida = dem.get("pendientes", 0)
+
+            # Necesidad = max de ambas señales
+            necesidad = max(ventas_proyectadas, demanda_reprimida)
+            reposicion = max(0, necesidad - stock)
+
+            if reposicion == 0 and demanda_reprimida == 0 and ventas_proyectadas == 0:
+                continue
+
+            # Prioridad: sin stock + demanda alta = urgente
+            if stock == 0 and demanda_reprimida >= 5:
+                prioridad = "URGENTE"
+                prio_order = 0
+            elif stock == 0 and reposicion > 0:
+                prioridad = "Alta"
+                prio_order = 1
+            elif reposicion > 0 and demanda_reprimida > 0:
+                prioridad = "Media"
+                prio_order = 2
+            elif reposicion > 0:
+                prioridad = "Baja"
+                prio_order = 3
+            else:
+                prioridad = "OK"
+                prio_order = 4
+
+            reposicion_rows.append({
+                "pname": pname, "vname": vname, "stock": stock,
+                "ventas_proy": ventas_proyectadas, "demanda_rep": demanda_reprimida,
+                "reposicion": reposicion, "prioridad": prioridad, "prio_order": prio_order
+            })
+
+    # Sort: primero urgentes, luego por reposición desc
+    reposicion_rows.sort(key=lambda x: (x["prio_order"], -x["reposicion"]))
+
+    prio_fills = {
+        "URGENTE": PatternFill("solid", fgColor="FAEAEA"),
+        "Alta":    PatternFill("solid", fgColor="FDEBD0"),
+        "Media":   PatternFill("solid", fgColor="FFF9E6"),
+        "Baja":    PatternFill("solid", fgColor="F5F5F5"),
+        "OK":      None,
+    }
+    prio_fonts = {
+        "URGENTE": Font(name="Arial", size=9, bold=True, color="C0392B"),
+        "Alta":    Font(name="Arial", size=9, bold=True, color="E67E22"),
+        "Media":   Font(name="Arial", size=9, color=brown_dark),
+        "Baja":    Font(name="Arial", size=9, color=brown_dark),
+        "OK":      Font(name="Arial", size=9, color="888888"),
+    }
+
+    for r4, row in enumerate(reposicion_rows, 2):
+        p = row["prioridad"]
+        row_fill4 = prio_fills.get(p)
+        vals = [row["pname"], row["vname"], row["stock"], row["ventas_proy"],
+                row["demanda_rep"] or None, row["reposicion"] if row["reposicion"] > 0 else None, p]
+        for c_idx, val in enumerate(vals, 1):
+            cell = ws4.cell(row=r4, column=c_idx, value=val)
+            cell.font = prio_fonts.get(p, normal_font) if c_idx == 7 else normal_font
+            cell.border = border
+            cell.alignment = center_align if c_idx > 1 else left_align
+            if row_fill4:
+                cell.fill = row_fill4
+
+    ws4.freeze_panes = "A2"
 
 
     buf = io.BytesIO()
@@ -596,6 +798,17 @@ def build_export_xlsx(summary_data, demand):
 
 
 _cache = {}
+
+def _init_cache_from_drive():
+    """Load cache from Drive on startup and populate _cache."""
+    data = drive_load_cache()
+    if data:
+        days = data.get("days", 90)
+        key = f"s{days}"
+        _cache[key] = data
+        print(f"  [Cache] Cargado desde Drive: key={key}")
+    else:
+        print("  [Cache] Sin datos previos en Drive, primera carga completa")
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -695,6 +908,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     boundary = part[9:].strip().encode()
             demand = {}
             days = 90
+            horizonte = 60
             if boundary:
                 parts = body.split(b"--" + boundary)
                 for part in parts:
@@ -714,12 +928,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             days = int(data.decode().strip())
                         except:
                             days = 90
+                    elif 'name="horizonte"' in header_raw:
+                        try:
+                            horizonte = int(data.decode().strip())
+                        except:
+                            horizonte = 60
             key = f"s{days}"
             if key not in _cache:
                 set_progress(0, "Iniciando...")
                 _cache[key] = build_summary(days)
                 set_progress(100, "Listo")
-            xlsx_bytes = build_export_xlsx(_cache[key], demand)
+            summary_with_horizonte = dict(_cache[key])
+            summary_with_horizonte["horizonte_reposicion"] = horizonte
+            xlsx_bytes = build_export_xlsx(summary_with_horizonte, demand)
             filename = f"sanpretta_stock_{datetime.now().strftime('%Y%m%d')}.xlsx"
             self.send_response(200)
             self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -746,8 +967,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             _cache[key] = build_summary(days)
             set_progress(100, "Listo")
         csv_path = qs.get("csv", [DEMAND_CSV_PATH])[0]
+        horizonte = int(qs.get("horizonte", ["60"])[0])
         demand = load_demand_csv(csv_path)
-        xlsx_bytes = build_export_xlsx(_cache[key], demand)
+        summary_with_horizonte = dict(_cache[key])
+        summary_with_horizonte["horizonte_reposicion"] = horizonte
+        xlsx_bytes = build_export_xlsx(summary_with_horizonte, demand)
         filename = f"sanpretta_stock_{datetime.now().strftime('%Y%m%d')}.xlsx"
         self.send_response(200)
         self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -760,11 +984,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def serve_summary(self):
         qs = parse_qs(urlparse(self.path).query)
         days = int(qs.get("days", ["90"])[0])
+        force = qs.get("force", ["0"])[0] == "1"
         key = f"s{days}"
-        if key not in _cache:
+        if key not in _cache or force:
             set_progress(0, "Iniciando...")
             _cache[key] = build_summary(days)
             set_progress(100, "Listo")
+            # Save to Drive in background
+            threading.Thread(target=drive_save_cache, args=(_cache[key],), daemon=True).start()
         data = json.dumps(_cache[key]).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -772,10 +999,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 if __name__ == "__main__":
-    server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"\n  Dashboard San Pretta")
+    print(f"  Cargando caché desde Drive...")
+    _init_cache_from_drive()
+    server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"  Abri http://localhost:{PORT} en tu browser")
-    print(f"  Primera carga tarda mas porque descarga historial completo")
     print(f"  Ctrl+C para detener\n")
     try:
         server.serve_forever()

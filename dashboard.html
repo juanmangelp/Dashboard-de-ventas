@@ -286,10 +286,16 @@ tr:last-child td { border-bottom: none; }
     <div class="export-wrap">
       <label class="export-csv-label btn-outline" title="Subir CSV de notificaciones de demanda">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><path d="M8 1v9M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="12" width="12" height="2" rx="1" fill="currentColor" opacity=".4"/></svg>
-        <span id="csv-label-text">CSV Demanda</span>
+        <span id="csv-label-text">CSV Notificaciones</span>
         <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvLoaded(this)">
       </label>
-      <button id="export-btn" onclick="exportarExcel()" title="Exportar a Excel">
+      <select id="horizonte-select" title="Horizonte de reposición" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
+        <option value="30">Reponer 30d</option>
+        <option value="60" selected>Reponer 60d</option>
+        <option value="90">Reponer 90d</option>
+        <option value="120">Reponer 120d</option>
+      </select>
+      <button id="export-btn" onclick="exportarExcel()" title="Exportar a Excel" disabled>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><rect x="1" y="1" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l3 4 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 10V4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         Exportar Excel
       </button>
@@ -630,9 +636,10 @@ async function exportarExcel() {
   try {
     const period = document.getElementById('period-select').value;
     const days = (period === 'custom' || isNaN(Number(period))) ? 90 : Number(period);
+    const horizonte = Number(document.getElementById('horizonte-select').value) || 60;
 
     // If CSV was uploaded, send it to server first via a temp upload endpoint
-    let url = `${API}/export?days=${days}`;
+    let url = `${API}/export?days=${days}&horizonte=${horizonte}`;
 
     if (demandCsvContent) {
       // POST CSV content then redirect — simpler: send as multipart via fetch + blob download
@@ -645,6 +652,7 @@ async function exportarExcel() {
       const formData = new FormData();
       formData.append('csv', blob, 'demand.csv');
       formData.append('days', days);
+      formData.append('horizonte', horizonte);
 
       const resp = await fetch(`${API}/export_upload`, { method: 'POST', body: formData });
       if (!resp.ok) throw new Error('Error al exportar');
@@ -750,6 +758,7 @@ async function loadData() {
   }
   lastParams = params;
   document.getElementById('loading-screen').style.display = 'flex';
+  document.getElementById('export-btn').disabled = true;
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('error-screen').style.display = 'none';
   document.getElementById('refresh-btn').disabled = true;
@@ -768,6 +777,7 @@ async function loadData() {
       document.getElementById('loading-screen').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
       renderAll();
+      document.getElementById('export-btn').disabled = false;
     }, 300);
   } catch(e) {
     stopProgressPolling();
