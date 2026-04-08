@@ -45,7 +45,12 @@ def _get_drive_service():
         if not creds_json:
             print("  [Drive] GOOGLE_CREDENTIALS_JSON no configurada")
             return None
-        creds_data = json.loads(creds_json)
+        # Acepta tanto JSON directo como base64
+        try:
+            creds_data = json.loads(creds_json)
+        except Exception:
+            import base64
+            creds_data = json.loads(base64.b64decode(creds_json).decode())
         creds = service_account.Credentials.from_service_account_info(
             creds_data,
             scopes=["https://www.googleapis.com/auth/drive"]
