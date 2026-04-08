@@ -262,6 +262,7 @@ tr:last-child td { border-bottom: none; }
   .header-center { display: none; }
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -490,16 +491,31 @@ tr:last-child td { border-bottom: none; }
       </div><!-- /ventas-body -->
     </div><!-- /main-table-panel -->
 
-    <!-- Envios bonificados por mes -->
+    <!-- Envios por mes -->
     <div class="panel" id="shipping-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('shipping')">
-        Envíos bonificados por mes
+        Costos de envío por mes
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="shipping-panel-count"></span>
           <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="shipping-body">
+        <!-- Chart -->
+        <div style="margin-bottom:1.5rem">
+          <div style="display:flex;align-items:center;gap:18px;margin-bottom:1rem">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
+              <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#7a5c50"></span> Asumido por la tienda
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
+              <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#c4a99e"></span> Pagado por el cliente
+            </div>
+          </div>
+          <div id="shipping-chart-wrap" style="width:100%;overflow-x:auto">
+            <canvas id="shipping-chart" style="min-width:500px;height:220px"></canvas>
+          </div>
+        </div>
+        <!-- Detail -->
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem">
           <div class="filtro-group">
             <span class="filtro-label">Mes</span>
@@ -1203,71 +1219,154 @@ function resetFiltrosVentas() {
 // --- IMPRIMIR ---
 let shippingByMonthData = {};
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+let _shippingChart = null;
 
 function renderShippingByMonth(byMonth, total) {
   const panel = document.getElementById('shipping-panel');
-  const entries = Object.entries(byMonth);
+  const entries = Object.entries(byMonth).sort((a,b) => a[0].localeCompare(b[0]));
   if (!entries.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   shippingByMonthData = byMonth;
-
   document.getElementById('shipping-panel-count').textContent = `${entries.length} meses`;
 
   // Populate month selector
   const sel = document.getElementById('shipping-month-select');
   const prev = sel.value;
   sel.innerHTML = '<option value="">Todos los meses</option>' +
-    entries.map(([key]) => {
+    [...entries].reverse().map(([key]) => {
       const [year, month] = key.split('-');
       return `<option value="${key}">${MESES[parseInt(month)-1]} ${year}</option>`;
     }).join('');
   if (prev) sel.value = prev;
 
+  // Draw chart
+  renderShippingChart(entries);
   renderShippingDetail();
+}
+
+function renderShippingChart(entries) {
+  const labels = entries.map(([key]) => {
+    const [year, month] = key.split('-');
+    return MESES[parseInt(month)-1].substring(0,3) + ' ' + year.substring(2);
+  });
+  const tienda   = entries.map(([,v]) => v.costo_tienda  || 0);
+  const cliente  = entries.map(([,v]) => v.costo_cliente || 0);
+
+  const canvas = document.getElementById('shipping-chart');
+  // Set canvas width dynamically
+  canvas.width = Math.max(500, entries.length * 70);
+  canvas.height = 220;
+  const ctx = canvas.getContext('2d');
+
+  if (_shippingChart) { _shippingChart.destroy(); }
+
+  const cream2 = getComputedStyle(document.documentElement).getPropertyValue('--cream2').trim() || '#f5ede6';
+
+  _shippingChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Tienda',
+          data: tienda,
+          backgroundColor: '#7a5c50',
+          borderRadius: 3,
+          borderSkipped: false,
+        },
+        {
+          label: 'Cliente',
+          data: cliente,
+          backgroundColor: '#c4a99e',
+          borderRadius: 3,
+          borderSkipped: false,
+        }
+      ]
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ` $${ctx.parsed.y.toLocaleString('es-AR')}`,
+            title: (items) => {
+              const idx = items[0].dataIndex;
+              const [key] = Object.entries(shippingByMonthData).sort((a,b)=>a[0].localeCompare(b[0]))[idx];
+              const [year, month] = key.split('-');
+              return MESES[parseInt(month)-1] + ' ' + year;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { display: false },
+          ticks: { font: { family: 'Jost', size: 10 }, color: '#b09080' }
+        },
+        y: {
+          stacked: true,
+          grid: { color: 'rgba(180,150,130,0.1)' },
+          ticks: {
+            font: { family: 'Jost', size: 10 },
+            color: '#b09080',
+            callback: v => '$' + (v >= 1000 ? Math.round(v/1000) + 'k' : v)
+          }
+        }
+      }
+    }
+  });
 }
 
 function renderShippingDetail() {
   const sel = document.getElementById('shipping-month-select').value;
   const entries = Object.entries(shippingByMonthData);
-  const maxCost = Math.max(...entries.map(([,v]) => v.cost));
 
   if (sel) {
-    // Single month detail
     const v = shippingByMonthData[sel];
     const [year, month] = sel.split('-');
     const nombre = `${MESES[parseInt(month)-1]} ${year}`;
+    const totalEnvio = (v.costo_tienda||0) + (v.costo_cliente||0);
     document.getElementById('shipping-detail-view').innerHTML = `
       <div style="background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border);padding:1.25rem 1.5rem;margin-bottom:1rem">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text3);margin-bottom:8px">${nombre}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text3);margin-bottom:12px">${nombre}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem">
           <div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Total bonificado</div>
-            <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:500;color:var(--text)">$${fmt(v.cost)}</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Asumido por la tienda</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#7a5c50">$${fmt(v.costo_tienda||0)}</div>
           </div>
           <div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Envíos bonificados</div>
-            <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:500;color:var(--text)">${v.orders}</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Pagado por el cliente</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#b09080">$${fmt(v.costo_cliente||0)}</div>
           </div>
           <div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Costo promedio por envío</div>
-            <div style="font-size:18px;font-weight:400;color:var(--text2)">$${fmt(v.orders > 0 ? v.cost/v.orders : 0)}</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Envíos con cargo a tienda</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:var(--text)">${v.orders}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Costo promedio (tienda)</div>
+            <div style="font-size:18px;font-weight:400;color:var(--text2)">$${fmt(v.orders > 0 ? (v.costo_tienda||0)/v.orders : 0)}</div>
           </div>
         </div>
       </div>`;
     document.getElementById('shipping-month-content').style.display = 'none';
   } else {
-    // All months grid
     document.getElementById('shipping-detail-view').innerHTML = '';
     document.getElementById('shipping-month-content').style.display = 'grid';
+    const maxCost = Math.max(...entries.map(([,v]) => (v.costo_tienda||0) + (v.costo_cliente||0)));
     document.getElementById('shipping-month-content').innerHTML = entries.map(([key, v]) => {
       const [year, month] = key.split('-');
       const nombre = `${MESES[parseInt(month)-1]} ${year}`;
-      const barPct = Math.round((v.cost / maxCost) * 100);
+      const total = (v.costo_tienda||0) + (v.costo_cliente||0);
+      const pctTienda = total > 0 ? Math.round((v.costo_tienda||0)/total*100) : 0;
       return `<div class="shipping-month-card" onclick="selectShippingMonth('${key}')" style="cursor:pointer">
         <div class="shipping-month-name">${nombre}</div>
-        <div class="shipping-month-cost">$${fmt(v.cost)}</div>
-        <div class="shipping-month-orders">${v.orders} envío${v.orders !== 1 ? 's' : ''} bonificado${v.orders !== 1 ? 's' : ''}</div>
-        <div class="shipping-bar-wrap"><div class="shipping-bar" style="width:${barPct}%"></div></div>
+        <div class="shipping-month-cost" style="color:#7a5c50">$${fmt(v.costo_tienda||0)}</div>
+        <div class="shipping-month-orders" style="color:#b09080">+ $${fmt(v.costo_cliente||0)} cliente</div>
+        <div class="shipping-bar-wrap" style="height:5px;margin-top:8px">
+          <div style="height:5px;border-radius:3px;background:linear-gradient(to right,#7a5c50 ${pctTienda}%,#c4a99e ${pctTienda}%)"></div>
+        </div>
       </div>`;
     }).join('');
   }

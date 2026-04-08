@@ -409,13 +409,17 @@ def compute_summary(days=None, date_from=None, date_to=None):
         cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
         cost_customer = float(order.get("shipping_cost_customer", 0) or 0)
         pickup_type = order.get("shipping_pickup_type", "")
-        if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
+        if pickup_type == "ship":
             month_key = order.get("created_at", "")[:7]
             if month_key:
                 if month_key not in shipping_by_month:
-                    shipping_by_month[month_key] = {"cost": 0.0, "orders": 0}
-                shipping_by_month[month_key]["cost"] += cost_owner
-                shipping_by_month[month_key]["orders"] += 1
+                    shipping_by_month[month_key] = {"costo_tienda": 0.0, "costo_cliente": 0.0, "orders": 0}
+                # Lo que asume la tienda: cuando el cliente paga $0
+                if cost_owner > 0 and cost_customer == 0:
+                    shipping_by_month[month_key]["costo_tienda"] += cost_owner
+                    shipping_by_month[month_key]["orders"] += 1
+                elif cost_customer > 0:
+                    shipping_by_month[month_key]["costo_cliente"] += cost_customer
 
     stagnant = []
     for vid, v in variant_map.items():
@@ -472,7 +476,7 @@ def compute_summary(days=None, date_from=None, date_to=None):
         "stagnant": stagnant,
         "shipping_cost": round(total_shipping_cost, 2),
         "shipping_orders": shipping_orders,
-        "shipping_by_month": {k: {"cost": round(v["cost"], 2), "orders": v["orders"]} for k, v in sorted(shipping_by_month.items(), reverse=True)}
+        "shipping_by_month": {k: {"costo_tienda": round(v["costo_tienda"], 2), "costo_cliente": round(v["costo_cliente"], 2), "orders": v["orders"]} for k, v in sorted(shipping_by_month.items(), reverse=True)}
     }
 
 def build_summary(days=None, date_from=None, date_to=None):
