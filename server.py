@@ -548,6 +548,47 @@ def build_export_xlsx(summary_data, demand):
             if fill2:
                 cell.fill = fill2
 
+    # Sheet 3: Stock quieto (estancado)
+    ws3 = wb.create_sheet("Stock Quieto")
+    h3 = ["Artículo", "Talle", "Stock", "Días en Catálogo", "Estado"]
+    w3 = [40, 8, 8, 16, 14]
+    for col_idx, (h, w) in enumerate(zip(h3, w3), 1):
+        cell = ws3.cell(row=1, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = border
+        ws3.column_dimensions[get_column_letter(col_idx)].width = w
+
+    tipo_label = {"critico": "Crítico", "observacion": "Observación", "nuevo": "Nuevo"}
+    tipo_fill = {
+        "critico": PatternFill("solid", fgColor="FAEAEA"),
+        "observacion": PatternFill("solid", fgColor="FFF3E0"),
+        "nuevo": None,
+    }
+
+    stagnant = summary_data.get("stagnant", [])
+    for r3, item in enumerate(stagnant, 2):
+        tipo = item.get("tipo", "nuevo")
+        row_fill3 = tipo_fill.get(tipo)
+        vals = [
+            item.get("product", ""),
+            item.get("variant", ""),
+            item.get("stock", 0),
+            item.get("days_in_catalog", None),
+            tipo_label.get(tipo, tipo),
+        ]
+        for c_idx, val in enumerate(vals, 1):
+            cell = ws3.cell(row=r3, column=c_idx, value=val)
+            cell.font = normal_font
+            cell.border = border
+            cell.alignment = center_align if c_idx > 1 else left_align
+            if row_fill3:
+                cell.fill = row_fill3
+
+    ws3.freeze_panes = "A2"
+
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
