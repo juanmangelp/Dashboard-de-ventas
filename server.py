@@ -883,6 +883,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b'{"ok":true}')
         elif self.path.startswith("/export"):
             self.serve_export()
+        elif self.path == "/diagnostico":
+            result = {}
+            # Check env vars
+            creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+            result["GOOGLE_CREDENTIALS_JSON_len"] = len(creds_json)
+            result["GDRIVE_FOLDER_ID"] = os.environ.get("GDRIVE_FOLDER_ID", "no configurado")
+            result["GDRIVE_OK"] = GDRIVE_OK
+            # Try to connect
+            try:
+                svc = _get_drive_service()
+                result["drive_service"] = "OK" if svc else "None"
+                if svc:
+                    res = svc.files().list(
+                        q=f"'{GDRIVE_FOLDER_ID}' in parents and trashed=false",
+                        fields="files(id,name)",
+                        pageSize=5
+                    ).execute()
+                    result["archivos_en_carpeta"] = [f["name"] for f in res.get("files", [])]
+            except Exception as e:
+                result["drive_error"] = str(e)
+            # Check cache
+            result["cache_keys"] = list(_cache.keys())
+            data = json.dumps(result, indent=2, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors(); self.end_headers()
+            self.wfile.write(data)
         else:
             self.send_response(404); self.end_headers()
     def serve_file(self, filename, content_type):
