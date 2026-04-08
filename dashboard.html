@@ -289,6 +289,13 @@ tr:last-child td { border-bottom: none; }
         <span id="csv-label-text">CSV Notificaciones</span>
         <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvLoaded(this)">
       </label>
+      <select id="dias-filtro-csv" title="Período de notificaciones a considerar" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
+        <option value="7">Notif. 7d</option>
+        <option value="14">Notif. 14d</option>
+        <option value="30" selected>Notif. 30d</option>
+        <option value="60">Notif. 60d</option>
+        <option value="0">Notif. todas</option>
+      </select>
       <select id="horizonte-select" title="Horizonte de reposición" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
         <option value="30">Reponer 30d</option>
         <option value="60" selected>Reponer 60d</option>
@@ -653,6 +660,7 @@ async function exportarExcel() {
       formData.append('csv', blob, 'demand.csv');
       formData.append('days', days);
       formData.append('horizonte', horizonte);
+      formData.append('dias_filtro_csv', document.getElementById('dias-filtro-csv').value);
 
       const resp = await fetch(`${API}/export_upload`, { method: 'POST', body: formData });
       if (!resp.ok) throw new Error('Error al exportar');

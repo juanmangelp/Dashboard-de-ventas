@@ -295,32 +295,72 @@ def _calc_historical_rate(dates):
     except:
         return 0.0
 
-def build_summary(days=None, date_from=None, date_to=None):
-    set_progress(0, "Iniciando...")
-    products = fetch_products()
-    set_progress(8, "Procesando productos...")
-    variant_map, product_names = build_variant_map(products)
+# Raw data cache — fetched once, reused for any period
+_raw_cache = {"products": None, "all_orders": None, "variant_map": None, "product_names": None, "last_updated": None}
+
+def fetch_raw_data(incremental=False):
+    """Fetch products and order history from API. If incremental=True and we have
+    existing data, only fetch orders newer than last_updated and merge."""
+    now_str = datetime.now().strftime("%Y-%m-%d")
+
+    if incremental and _raw_cache["all_orders"] is not None and _raw_cache["last_updated"]:
+        # Only fetch orders since last update
+        last = _raw_cache["last_updated"]
+        set_progress(5, f"Actualizando desde {last}...")
+        products = fetch_products()
+        variant_map, product_names = build_variant_map(products)
+        new_orders = fetch_orders(date_from=last, date_to=now_str, progress_range=(10, 70), label="Nuevos pedidos")
+        if new_orders:
+            # Merge: add new orders, remove duplicates by order id
+            existing_ids = {o["id"] for o in _raw_cache["all_orders"]}
+            added = [o for o in new_orders if o["id"] not in existing_ids]
+            _raw_cache["all_orders"] = _raw_cache["all_orders"] + added
+            print(f"  [Cache] Incremental: +{len(added)} pedidos nuevos")
+        else:
+            print("  [Cache] Incremental: sin pedidos nuevos")
+        _raw_cache["products"] = products
+        _raw_cache["variant_map"] = variant_map
+        _raw_cache["product_names"] = product_names
+        _raw_cache["last_updated"] = now_str
+        set_progress(90, "Datos actualizados")
+    else:
+        # Full fetch
+        set_progress(2, "Cargando productos...")
+        products = fetch_products()
+        set_progress(8, "Procesando productos...")
+        variant_map, product_names = build_variant_map(products)
+        set_progress(10, "Cargando historial completo de pedidos...")
+        all_orders = fetch_orders(days=None, progress_range=(10, 90), label="Historial")
+        set_progress(92, "Procesando datos...")
+        _raw_cache["products"] = products
+        _raw_cache["all_orders"] = all_orders
+        _raw_cache["variant_map"] = variant_map
+        _raw_cache["product_names"] = product_names
+        _raw_cache["last_updated"] = now_str
+
+def compute_summary(days=None, date_from=None, date_to=None):
+    """Compute summary from _raw_cache for any period — no API calls."""
+    products = _raw_cache["products"]
+    all_orders = _raw_cache["all_orders"]
+    variant_map = _raw_cache["variant_map"]
+    product_names = _raw_cache["product_names"]
 
     if date_from and date_to:
-        from datetime import datetime as _dt
-        d1 = _dt.strptime(date_from, "%Y-%m-%d")
-        d2 = _dt.strptime(date_to, "%Y-%m-%d")
+        d1 = datetime.strptime(date_from, "%Y-%m-%d")
+        d2 = datetime.strptime(date_to, "%Y-%m-%d")
         days = max((d2 - d1).days, 1)
-        label_period = f"{date_from} → {date_to}"
+        cutoff = d1
+        cutoff_str = date_from
     else:
-        label_period = f"últimos {days} días"
-    set_progress(10, f"Cargando pedidos {label_period}...")
-    period_orders = fetch_orders(days=days if not date_from else None, date_from=date_from, date_to=date_to, progress_range=(10,45), label=f"Pedidos")
+        cutoff = datetime.now() - timedelta(days=days)
+        cutoff_str = cutoff.strftime("%Y-%m-%d")
 
-    set_progress(45, "Cargando historial completo...")
-    all_orders = fetch_orders(days=None, date_from=None, date_to=None, progress_range=(45,88), label="Historial")
+    # Filter period orders from full history
+    period_orders = [o for o in all_orders if o.get("created_at", "")[:10] >= cutoff_str]
 
-    # Variants with sales in the period (for rotation metrics)
     period_variants_sold = get_variants_with_sales(period_orders)
-    # Variants with ANY sale ever (for stagnant detection)
     all_variants_sold = get_variants_with_sales(all_orders)
 
-    # Build all-time dates per (pid, vid) from historical orders
     all_dates_map = defaultdict(list)
     for order in all_orders:
         order_date = order.get("created_at", "")[:10]
@@ -333,12 +373,12 @@ def build_summary(days=None, date_from=None, date_to=None):
                 if order_date not in all_dates_map[key]:
                     all_dates_map[key].append(order_date)
 
-    # Aggregate period sales by (product_id, variant_id)
-    sales = defaultdict(lambda: {"units": 0, "revenue": 0.0, "product_name": "", "variant_name": "", "sale_dates": [], "all_dates": []})
+    sales = defaultdict(lambda: {"units": 0, "revenue": 0.0, "product_name": "", "variant_name": "", "sale_dates": []})
     total_revenue = 0.0
     total_shipping_cost = 0.0
     shipping_orders = 0
-    shipping_by_month = {}  # "YYYY-MM" -> {cost, orders} — siempre historial completo
+    shipping_by_month = {}
+
     for order in period_orders:
         total_revenue += float(order.get("total", 0) or 0)
         cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
@@ -347,19 +387,6 @@ def build_summary(days=None, date_from=None, date_to=None):
         if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
             total_shipping_cost += cost_owner
             shipping_orders += 1
-
-    # Envios por mes: siempre sobre historial completo, ignorando el periodo seleccionado
-    for order in all_orders:
-        cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
-        cost_customer = float(order.get("shipping_cost_customer", 0) or 0)
-        pickup_type = order.get("shipping_pickup_type", "")
-        if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
-            month_key = order.get("created_at", "")[:7]
-            if month_key:
-                if month_key not in shipping_by_month:
-                    shipping_by_month[month_key] = {"cost": 0.0, "orders": 0}
-                shipping_by_month[month_key]["cost"] += cost_owner
-                shipping_by_month[month_key]["orders"] += 1
         for item in order.get("products", []):
             pid = item.get("product_id")
             vid = item.get("variant_id")
@@ -371,8 +398,6 @@ def build_summary(days=None, date_from=None, date_to=None):
             order_date = order.get("created_at", "")[:10]
             if order_date and order_date not in sales[key]["sale_dates"]:
                 sales[key]["sale_dates"].append(order_date)
-            if order_date and order_date not in sales[key]["all_dates"]:
-                sales[key]["all_dates"].append(order_date)
             if vid and vid in variant_map:
                 sales[key]["product_name"] = variant_map[vid]["product_name"]
                 sales[key]["variant_name"] = variant_map[vid]["variant_name"]
@@ -380,29 +405,33 @@ def build_summary(days=None, date_from=None, date_to=None):
                 sales[key]["product_name"] = product_names.get(pid, get_name(item.get("name", "")))
                 sales[key]["variant_name"] = get_name(item.get("variant", ""))
 
-    # Stagnant: stock > 0 AND never sold (in entire history)
+    for order in all_orders:
+        cost_owner = float(order.get("shipping_cost_owner", 0) or 0)
+        cost_customer = float(order.get("shipping_cost_customer", 0) or 0)
+        pickup_type = order.get("shipping_pickup_type", "")
+        if cost_owner > 0 and cost_customer == 0 and pickup_type == "ship":
+            month_key = order.get("created_at", "")[:7]
+            if month_key:
+                if month_key not in shipping_by_month:
+                    shipping_by_month[month_key] = {"cost": 0.0, "orders": 0}
+                shipping_by_month[month_key]["cost"] += cost_owner
+                shipping_by_month[month_key]["orders"] += 1
+
     stagnant = []
     for vid, v in variant_map.items():
         if v["stock"] <= 0: continue
         if not v["variant_name"] or v["variant_name"] == "(sin variante)": continue
-        if vid in all_variants_sold: continue  # sold at least once ever → not stagnant
+        if vid in all_variants_sold: continue
         d = v["days_in_catalog"]
         tipo = "critico" if d >= 180 else "observacion" if d >= 60 else "nuevo"
         stagnant.append({
-            "product": v["product_name"],
-            "variant": v["variant_name"],
-            "stock": v["stock"],
-            "days_in_catalog": d,
-            "tipo": tipo,
-            "image": v.get("image", ""),
-            "price": v["price"],
-            "promo_price": v["promo_price"]
+            "product": v["product_name"], "variant": v["variant_name"],
+            "stock": v["stock"], "days_in_catalog": d, "tipo": tipo,
+            "image": v.get("image", ""), "price": v["price"], "promo_price": v["promo_price"]
         })
-
     tipo_order = {"critico": 0, "observacion": 1, "nuevo": 2}
     stagnant.sort(key=lambda x: (tipo_order[x["tipo"]], -x["days_in_catalog"]))
 
-    # Group period sales by product for main table
     by_product = defaultdict(lambda: {"name": "", "units": 0, "revenue": 0.0, "variants": []})
     for (pid, vid), s in sales.items():
         rate = round(s["units"] / days, 2)
@@ -421,7 +450,7 @@ def build_summary(days=None, date_from=None, date_to=None):
                 "dias_stock": dias_stock,
                 "image": variant_map.get(vid, {}).get("image", "") if vid else "",
                 "has_promo": variant_map.get(vid, {}).get("promo_price", 0) > 0 if vid else False,
-                "sale_dates": sorted(sales[(pid, vid)]["sale_dates"], reverse=True),
+                "sale_dates": sorted(s["sale_dates"], reverse=True),
                 "historical_rate": _calc_historical_rate(all_dates_map.get((pid, vid), []))
             })
 
@@ -433,8 +462,6 @@ def build_summary(days=None, date_from=None, date_to=None):
     out.sort(key=lambda x: x["units"], reverse=True)
 
     total_orders = len(period_orders)
-    set_progress(98, f"Finalizando: {total_orders} pedidos, {len(stagnant)} estancados")
-
     return {
         "days": days,
         "total_orders": total_orders,
@@ -448,11 +475,37 @@ def build_summary(days=None, date_from=None, date_to=None):
         "shipping_by_month": {k: {"cost": round(v["cost"], 2), "orders": v["orders"]} for k, v in sorted(shipping_by_month.items(), reverse=True)}
     }
 
-def _parse_demand_rows(rows):
-    """Convert iterable of CSV row dicts to demand dict, deduplicating by email per variant."""
+def build_summary(days=None, date_from=None, date_to=None):
+    """Fetch raw data if needed, then compute summary."""
+    if _raw_cache["all_orders"] is None:
+        fetch_raw_data()
+    set_progress(92, "Calculando resumen...")
+    result = compute_summary(days=days, date_from=date_from, date_to=date_to)
+    set_progress(100, "Listo")
+    return result
+
+def _parse_demand_rows(rows, dias_filtro=None):
+    """Convert iterable of CSV row dicts to demand dict, deduplicating by email per variant.
+    dias_filtro: if set, only consider rows from the last N days (based on createdDate).
+    """
+    cutoff = None
+    if dias_filtro:
+        cutoff = datetime.now() - timedelta(days=dias_filtro)
+
     # raw[key] = {email -> status}
     raw = {}
     for row in rows:
+        # Date filter
+        if cutoff:
+            fecha_str = row.get("createdDate", "")
+            if fecha_str:
+                try:
+                    fecha = datetime.fromisoformat(fecha_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                    if fecha < cutoff:
+                        continue
+                except:
+                    pass
+
         key = (row.get("productName","").strip(), row.get("productVariantName","").strip())
         email = row.get("email","").strip().lower()
         status = row.get("status","").strip()
@@ -463,6 +516,7 @@ def _parse_demand_rows(rows):
         # Keep "unsent" over "sent" if same email appears twice
         if email not in raw[key] or status == "unsent":
             raw[key][email] = status
+
     demand = {}
     for key, emails in raw.items():
         demand[key] = {
@@ -672,15 +726,15 @@ def build_export_xlsx(summary_data, demand):
     ws3.freeze_panes = "A2"
 
 
-    # Sheet 4: Predicción de reposición
+    # Sheet 4: Reposición Sugerida
     ws4 = wb.create_sheet("Reposición Sugerida")
-
-    # Horizonte configurable — default 60 días, pasado como parámetro opcional en summary_data
     horizonte = summary_data.get("horizonte_reposicion", 60)
+    dias_filtro_csv = summary_data.get("dias_filtro_csv", None)
+    filtro_label = f"últimos {dias_filtro_csv}d" if dias_filtro_csv else "todo el CSV"
 
-    h4 = ["Artículo", "Talle", "Stock Actual", f"Ventas Proy. ({horizonte}d)",
-          "Demanda Reprimida", "Reposición Sugerida", "Prioridad"]
-    w4 = [40, 8, 12, 18, 18, 20, 12]
+    h4 = ["Artículo", "Talle", "¿Reponer?", "Unidades a Reponer",
+          "Stock Actual", f"Ventas Proy. ({horizonte}d)", f"Notif. Pendientes ({filtro_label})", "Prioridad", "Razón"]
+    w4 = [40, 8, 10, 18, 12, 18, 24, 12, 55]
     for col_idx, (h, w) in enumerate(zip(h4, w4), 1):
         cell = ws4.cell(row=1, column=col_idx, value=h)
         cell.font = header_font
@@ -697,44 +751,57 @@ def build_export_xlsx(summary_data, demand):
             vname = v.get("variant_name", "")
             stock = v.get("stock", 0)
             hist_rate = v.get("historical_rate", 0) or v.get("rate", 0) or 0
-
             ventas_proyectadas = round(hist_rate * horizonte)
+            ventas_por_semana = round(hist_rate * 7, 1)
 
             d_key = (pname, vname)
             dem = demand.get(d_key, {})
             demanda_reprimida = dem.get("pendientes", 0)
+            notif_total = dem.get("total", 0)
 
-            # Necesidad = max de ambas señales
             necesidad = max(ventas_proyectadas, demanda_reprimida)
             reposicion = max(0, necesidad - stock)
+            reponer = reposicion > 0
 
-            if reposicion == 0 and demanda_reprimida == 0 and ventas_proyectadas == 0:
+            # Prioridad
+            if stock == 0 and demanda_reprimida >= 5:
+                prioridad = "URGENTE"; prio_order = 0
+            elif stock == 0 and reponer:
+                prioridad = "Alta"; prio_order = 1
+            elif reponer and demanda_reprimida > 0:
+                prioridad = "Media"; prio_order = 2
+            elif reponer:
+                prioridad = "Baja"; prio_order = 3
+            else:
+                prioridad = "OK"; prio_order = 4
+
+            # Build reason text
+            razones = []
+            if demanda_reprimida > 0:
+                razones.append(f"{demanda_reprimida} persona{'s' if demanda_reprimida > 1 else ''} esperando stock")
+            if notif_total > demanda_reprimida and notif_total > 0:
+                razones.append(f"{notif_total} notificaciones en total")
+            if ventas_por_semana > 0:
+                razones.append(f"vende ~{ventas_por_semana}/semana")
+            if stock == 0:
+                razones.append("sin stock actualmente")
+            elif stock > 0 and reposicion > 0:
+                razones.append(f"stock actual cubre solo parte de la demanda")
+            razon = " · ".join(razones) if razones else "—"
+
+            if not reponer and demanda_reprimida == 0 and ventas_proyectadas == 0:
                 continue
 
-            # Prioridad: sin stock + demanda alta = urgente
-            if stock == 0 and demanda_reprimida >= 5:
-                prioridad = "URGENTE"
-                prio_order = 0
-            elif stock == 0 and reposicion > 0:
-                prioridad = "Alta"
-                prio_order = 1
-            elif reposicion > 0 and demanda_reprimida > 0:
-                prioridad = "Media"
-                prio_order = 2
-            elif reposicion > 0:
-                prioridad = "Baja"
-                prio_order = 3
-            else:
-                prioridad = "OK"
-                prio_order = 4
-
             reposicion_rows.append({
-                "pname": pname, "vname": vname, "stock": stock,
-                "ventas_proy": ventas_proyectadas, "demanda_rep": demanda_reprimida,
-                "reposicion": reposicion, "prioridad": prioridad, "prio_order": prio_order
+                "pname": pname, "vname": vname,
+                "reponer": "Sí" if reponer else "No",
+                "reposicion": reposicion if reponer else 0,
+                "stock": stock, "ventas_proy": ventas_proyectadas,
+                "demanda_rep": demanda_reprimida or None,
+                "prioridad": prioridad, "prio_order": prio_order,
+                "razon": razon
             })
 
-    # Sort: primero urgentes, luego por reposición desc
     reposicion_rows.sort(key=lambda x: (x["prio_order"], -x["reposicion"]))
 
     prio_fills = {
@@ -755,15 +822,18 @@ def build_export_xlsx(summary_data, demand):
     for r4, row in enumerate(reposicion_rows, 2):
         p = row["prioridad"]
         row_fill4 = prio_fills.get(p)
-        vals = [row["pname"], row["vname"], row["stock"], row["ventas_proy"],
-                row["demanda_rep"] or None, row["reposicion"] if row["reposicion"] > 0 else None, p]
+        vals = [row["pname"], row["vname"], row["reponer"], row["reposicion"] or None,
+                row["stock"], row["ventas_proy"] or None, row["demanda_rep"],
+                p, row["razon"]]
         for c_idx, val in enumerate(vals, 1):
             cell = ws4.cell(row=r4, column=c_idx, value=val)
-            cell.font = prio_fonts.get(p, normal_font) if c_idx == 7 else normal_font
+            is_prio_col = c_idx == 8
+            cell.font = prio_fonts.get(p, normal_font) if is_prio_col else normal_font
             cell.border = border
-            cell.alignment = center_align if c_idx > 1 else left_align
+            cell.alignment = left_align if c_idx in (1, 9) else center_align
             if row_fill4:
                 cell.fill = row_fill4
+        ws4.row_dimensions[r4].height = 18
 
     ws4.freeze_panes = "A2"
 
@@ -777,15 +847,17 @@ def build_export_xlsx(summary_data, demand):
 _cache = {}
 
 def _init_cache_from_drive():
-    """Load cache from Drive on startup and populate _cache."""
+    """Load cache from Gist on startup. Restores computed summary only (no raw orders)."""
     data = drive_load_cache()
     if data:
         days = data.get("days", 90)
         key = f"s{days}"
         _cache[key] = data
-        print(f"  [Cache] Cargado desde Drive: key={key}")
+        # Store last_updated so incremental fetch knows where to start
+        _raw_cache["last_updated"] = data.get("_last_updated", None)
+        print(f"  [Cache] Cargado desde Gist: key={key}, last_updated={_raw_cache['last_updated']}")
     else:
-        print("  [Cache] Sin datos previos en Drive, primera carga completa")
+        print("  [Cache] Sin datos previos en Gist, primera carga completa")
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -943,6 +1015,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             demand = {}
             days = 90
             horizonte = 60
+            dias_filtro_csv = None
+            csv_rows = None
             if boundary:
                 parts = body.split(b"--" + boundary)
                 for part in parts:
@@ -955,8 +1029,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     data = part[header_end+4:].rstrip(b"\r\n--")
                     if 'name="csv"' in header_raw:
                         csv_text = data.decode("utf-8-sig", errors="replace")
-                        reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
-                        demand = _parse_demand_rows(reader)
+                        csv_rows = list(csv.DictReader(io.StringIO(csv_text), delimiter=";"))
                     elif 'name="days"' in header_raw:
                         try:
                             days = int(data.decode().strip())
@@ -967,6 +1040,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             horizonte = int(data.decode().strip())
                         except:
                             horizonte = 60
+                    elif 'name="dias_filtro_csv"' in header_raw:
+                        try:
+                            v = data.decode().strip()
+                            dias_filtro_csv = int(v) if v != "0" else None
+                        except:
+                            dias_filtro_csv = None
+            if csv_rows is not None:
+                demand = _parse_demand_rows(csv_rows, dias_filtro=dias_filtro_csv)
             key = f"s{days}"
             if key not in _cache:
                 set_progress(0, "Iniciando...")
@@ -974,6 +1055,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 set_progress(100, "Listo")
             summary_with_horizonte = dict(_cache[key])
             summary_with_horizonte["horizonte_reposicion"] = horizonte
+            summary_with_horizonte["dias_filtro_csv"] = dias_filtro_csv
             xlsx_bytes = build_export_xlsx(summary_with_horizonte, demand)
             filename = f"sanpretta_stock_{datetime.now().strftime('%Y%m%d')}.xlsx"
             self.send_response(200)
@@ -1020,15 +1102,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
         days = int(qs.get("days", ["90"])[0])
         force = qs.get("force", ["0"])[0] == "1"
         key = f"s{days}"
-        if key not in _cache or force:
+
+        if force:
+            # Manual refresh: full fetch from API
+            set_progress(0, "Actualizando todo desde Tiendanube...")
+            fetch_raw_data(incremental=False)
+            _cache.clear()
+        elif _raw_cache["all_orders"] is None:
+            # First load after startup: incremental if we know last_updated, full otherwise
             set_progress(0, "Iniciando...")
-            _cache[key] = build_summary(days)
+            fetch_raw_data(incremental=_raw_cache["last_updated"] is not None)
+            _cache.clear()
+
+        if key not in _cache:
+            set_progress(92, f"Calculando resumen {days}d...")
+            _cache[key] = compute_summary(days=days)
             set_progress(100, "Listo")
-            # Save to Drive
-            try:
-                drive_save_cache(_cache[key])
-            except Exception as e:
-                print(f"  [Drive] Error guardando: {e}")
+            # Save to Gist: use 90d if available, otherwise current key
+            save_key = "s90" if "s90" in _cache else key
+            to_save = dict(_cache[save_key])
+            to_save["_last_updated"] = _raw_cache.get("last_updated", "")
+            threading.Thread(target=drive_save_cache, args=(to_save,), daemon=True).start()
+
         data = json.dumps(_cache[key]).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
