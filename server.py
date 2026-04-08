@@ -19,107 +19,79 @@ try:
 except ImportError:
     OPENPYXL_OK = False
 
-# Google Drive cache
-GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "1sodHQivHnvJU8lK6dUjlZvSeKRWl0S3m")
-GDRIVE_CACHE_FILENAME = "sanpretta_cache.json"
-GDRIVE_OK = False
-_gdrive_service = None
+# GitHub Gist cache
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "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")
+GIST_DESCRIPTION = "sanpretta-dashboard-cache"
+_gist_id = None  # cached after first lookup
 
-try:
-    import google.auth
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build as gdrive_build
-    from googleapiclient.http import MediaIoBaseDownload, MediaInMemoryUpload
-    GDRIVE_OK = True
-except ImportError:
-    pass
+def _gist_request(method, url, data=None):
+    body = json.dumps(data).encode() if data else None
+    req = Request(url, data=body, method=method, headers={
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "SanPretta-Dashboard"
+    })
+    with urlopen(req) as resp:
+        return json.loads(resp.read())
 
-def _get_drive_service():
-    global _gdrive_service
-    if _gdrive_service:
-        return _gdrive_service
-    if not GDRIVE_OK:
-        return None
+def _find_gist_id():
+    global _gist_id
+    if _gist_id:
+        return _gist_id
     try:
-        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
-        if not creds_json:
-            print("  [Drive] GOOGLE_CREDENTIALS_JSON no configurada")
-            return None
-        # Acepta tanto JSON directo como base64
-        try:
-            creds_data = json.loads(creds_json)
-        except Exception:
-            import base64
-            creds_data = json.loads(base64.b64decode(creds_json).decode())
-        creds = service_account.Credentials.from_service_account_info(
-            creds_data,
-            scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        _gdrive_service = gdrive_build("drive", "v3", credentials=creds, cache_discovery=False)
-        print("  [Drive] Conectado OK")
-        return _gdrive_service
+        gists = _gist_request("GET", "https://api.github.com/gists?per_page=100")
+        for g in gists:
+            if g.get("description") == GIST_DESCRIPTION:
+                _gist_id = g["id"]
+                print(f"  [Gist] Encontrado gist existente: {_gist_id}")
+                return _gist_id
     except Exception as e:
-        print(f"  [Drive] Error conectando: {e}")
-        return None
+        print(f"  [Gist] Error buscando gist: {e}")
+    return None
 
 def drive_load_cache():
-    """Download cache JSON from Drive. Returns dict or None."""
-    svc = _get_drive_service()
-    if not svc:
+    """Load cache from GitHub Gist. Returns dict or None."""
+    if not GITHUB_TOKEN:
         return None
     try:
-        res = svc.files().list(
-            q=f"name='{GDRIVE_CACHE_FILENAME}' and '{GDRIVE_FOLDER_ID}' in parents and trashed=false",
-            fields="files(id,name,modifiedTime)",
-            pageSize=1
-        ).execute()
-        files = res.get("files", [])
-        if not files:
-            print("  [Drive] Sin caché previo")
+        gist_id = _find_gist_id()
+        if not gist_id:
+            print("  [Gist] Sin caché previo")
             return None
-        file_id = files[0]["id"]
-        modified = files[0].get("modifiedTime", "")
-        print(f"  [Drive] Cargando caché (modificado: {modified[:10]})")
-        buf = io.BytesIO()
-        dl = MediaIoBaseDownload(buf, svc.files().get_media(fileId=file_id))
-        done = False
-        while not done:
-            _, done = dl.next_chunk()
-        buf.seek(0)
-        data = json.loads(buf.read().decode())
-        print(f"  [Drive] Caché cargado OK ({len(data.get('products', []))} productos)")
+        gist = _gist_request("GET", f"https://api.github.com/gists/{gist_id}")
+        raw_url = gist["files"]["cache.json"]["raw_url"]
+        req = Request(raw_url, headers={"Authorization": f"token {GITHUB_TOKEN}", "User-Agent": "SanPretta-Dashboard"})
+        with urlopen(req) as resp:
+            data = json.loads(resp.read())
+        print(f"  [Gist] Caché cargado OK ({len(data.get('products', []))} productos)")
         return data
     except Exception as e:
-        print(f"  [Drive] Error cargando caché: {e}")
+        print(f"  [Gist] Error cargando caché: {e}")
         return None
 
 def drive_save_cache(data):
-    """Upload/update cache JSON to Drive."""
-    svc = _get_drive_service()
-    if not svc:
+    """Save cache to GitHub Gist."""
+    global _gist_id
+    if not GITHUB_TOKEN:
         return
     try:
-        content_bytes = json.dumps(data, ensure_ascii=False).encode()
-        media = MediaInMemoryUpload(content_bytes, mimetype="application/json", resumable=False)
-        # Check if file exists
-        res = svc.files().list(
-            q=f"name='{GDRIVE_CACHE_FILENAME}' and '{GDRIVE_FOLDER_ID}' in parents and trashed=false",
-            fields="files(id)",
-            pageSize=1
-        ).execute()
-        files = res.get("files", [])
-        if files:
-            svc.files().update(fileId=files[0]["id"], media_body=media).execute()
-            print("  [Drive] Caché actualizado")
+        content = json.dumps(data, ensure_ascii=False)
+        gist_id = _find_gist_id()
+        if gist_id:
+            _gist_request("PATCH", f"https://api.github.com/gists/{gist_id}",
+                         {"files": {"cache.json": {"content": content}}})
+            print("  [Gist] Caché actualizado en GitHub")
         else:
-            svc.files().create(
-                body={"name": GDRIVE_CACHE_FILENAME, "parents": [GDRIVE_FOLDER_ID]},
-                media_body=media,
-                fields="id"
-            ).execute()
-            print("  [Drive] Caché creado en Drive")
+            result = _gist_request("POST", "https://api.github.com/gists", {
+                "description": GIST_DESCRIPTION,
+                "public": False,
+                "files": {"cache.json": {"content": content}}
+            })
+            _gist_id = result["id"]
+            print(f"  [Gist] Caché creado en GitHub: {_gist_id}")
     except Exception as e:
-        print(f"  [Drive] Error guardando caché: {e}")
+        print(f"  [Gist] Error guardando caché: {e}")
 
 
 STORE_ID = "87884"
