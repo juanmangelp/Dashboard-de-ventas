@@ -37,6 +37,12 @@ button:hover { background: var(--mocha-dark); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-outline { background: transparent; color: var(--mocha); border: 1px solid var(--border2); }
 .btn-outline:hover { background: var(--cream2); }
+.export-wrap { display: flex; align-items: center; gap: 8px; margin-left: 4px; }
+.export-csv-label { display: inline-flex; align-items: center; padding: 8px 14px; cursor: pointer; font-family: 'Jost', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; border-radius: var(--radius-sm); color: var(--mocha); border: 1px solid var(--border2); transition: background 0.2s; }
+.export-csv-label:hover { background: var(--cream2); }
+.export-csv-label.loaded { color: #2e7d32; border-color: #a5d6a7; background: #f1f8f1; }
+#export-btn { background: #4a7c4e; }
+#export-btn:hover { background: #2e7d32; }
 
 main { max-width: 1300px; margin: 0 auto; padding: 2rem; }
 
@@ -277,6 +283,17 @@ tr:last-child td { border-bottom: none; }
       <input type="date" id="date-to">
     </div>
     <button id="refresh-btn">Actualizar</button>
+    <div class="export-wrap">
+      <label class="export-csv-label btn-outline" title="Subir CSV de notificaciones de demanda">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><path d="M8 1v9M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="12" width="12" height="2" rx="1" fill="currentColor" opacity=".4"/></svg>
+        <span id="csv-label-text">CSV Demanda</span>
+        <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvLoaded(this)">
+      </label>
+      <button id="export-btn" onclick="exportarExcel()" title="Exportar a Excel">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><rect x="1" y="1" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l3 4 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 10V4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Exportar Excel
+      </button>
+    </div>
   </div>
 </header>
 
@@ -591,6 +608,72 @@ tr:last-child td { border-bottom: none; }
 <script>
 const API = window.location.origin;
 let currentData = null;
+let demandCsvContent = null; // base64 content of uploaded CSV
+
+function onCsvLoaded(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    demandCsvContent = e.target.result; // data URL
+    const label = document.getElementById('csv-label-text');
+    label.textContent = file.name.length > 18 ? file.name.substring(0, 16) + '…' : file.name;
+    document.querySelector('.export-csv-label').classList.add('loaded');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function exportarExcel() {
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generando…';
+  try {
+    const period = document.getElementById('period-select').value;
+    const days = (period === 'custom' || isNaN(Number(period))) ? 90 : Number(period);
+
+    // If CSV was uploaded, send it to server first via a temp upload endpoint
+    let url = `${API}/export?days=${days}`;
+
+    if (demandCsvContent) {
+      // POST CSV content then redirect — simpler: send as multipart via fetch + blob download
+      const base64Data = demandCsvContent.split(',')[1];
+      const byteChars = atob(base64Data);
+      const byteArr = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArr], { type: 'text/csv' });
+
+      const formData = new FormData();
+      formData.append('csv', blob, 'demand.csv');
+      formData.append('days', days);
+
+      const resp = await fetch(`${API}/export_upload`, { method: 'POST', body: formData });
+      if (!resp.ok) throw new Error('Error al exportar');
+      const xlsxBlob = await resp.blob();
+      const dlUrl = URL.createObjectURL(xlsxBlob);
+      const a = document.createElement('a');
+      a.href = dlUrl;
+      a.download = `sanpretta_stock_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(dlUrl);
+    } else {
+      // No CSV — direct download
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Error al exportar');
+      const xlsxBlob = await resp.blob();
+      const dlUrl = URL.createObjectURL(xlsxBlob);
+      const a = document.createElement('a');
+      a.href = dlUrl;
+      a.download = `sanpretta_stock_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(dlUrl);
+    }
+  } catch (err) {
+    alert('Error al generar el Excel: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><rect x="1" y="1" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l3 4 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 10V4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Exportar Excel';
+  }
+}
 let estancadoFiltro = 'critico';
 let estancadoFiltrado = [];
 

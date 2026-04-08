@@ -4,10 +4,23 @@ import os
 import threading
 import hashlib
 import secrets
+import io
+import csv
+import tempfile
+import email
+import email.parser
 from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse, parse_qs
+
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    OPENPYXL_OK = True
+except ImportError:
+    OPENPYXL_OK = False
 
 STORE_ID = "87884"
 TOKEN = "c8e480ded10aed4f9e1dd31fb15f8ba658c3b72b"
@@ -363,6 +376,187 @@ def build_summary(days=None, date_from=None, date_to=None):
         "shipping_by_month": {k: {"cost": round(v["cost"], 2), "orders": v["orders"]} for k, v in sorted(shipping_by_month.items(), reverse=True)}
     }
 
+def _parse_demand_rows(rows):
+    """Convert iterable of CSV row dicts to demand dict, deduplicating by email per variant."""
+    # raw[key] = {email -> status}
+    raw = {}
+    for row in rows:
+        key = (row.get("productName","").strip(), row.get("productVariantName","").strip())
+        email = row.get("email","").strip().lower()
+        status = row.get("status","").strip()
+        if not email:
+            continue
+        if key not in raw:
+            raw[key] = {}
+        # Keep "unsent" over "sent" if same email appears twice
+        if email not in raw[key] or status == "unsent":
+            raw[key][email] = status
+    demand = {}
+    for key, emails in raw.items():
+        demand[key] = {
+            "total": len(emails),
+            "pendientes": sum(1 for s in emails.values() if s == "unsent")
+        }
+    return demand
+
+def load_demand_csv(filepath):
+    """Load notifications CSV and return dict: (productName, variantName) -> {total, pendientes}"""
+    if not filepath or not os.path.exists(filepath):
+        return {}
+    try:
+        with open(filepath, encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            return _parse_demand_rows(reader)
+    except Exception as e:
+        print(f"  [CSV] Error leyendo demanda: {e}")
+        return {}
+
+DEMAND_CSV_PATH = os.environ.get("DEMAND_CSV", "")
+
+def build_export_xlsx(summary_data, demand):
+    """Build Excel in memory, return bytes."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Stock y Demanda"
+
+    brown_mid = "7A5C50"
+    brown_dark = "3A2A24"
+    brown_light = "E8D8CF"
+
+    header_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+    header_fill = PatternFill("solid", fgColor=brown_mid)
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    subheader_font = Font(name="Arial", bold=True, color=brown_dark, size=9)
+    subheader_fill = PatternFill("solid", fgColor=brown_light)
+    normal_font = Font(name="Arial", size=9, color=brown_dark)
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center")
+    thin = Side(style="thin", color="D0C0B8")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # Title
+    ws.merge_cells("A1:I1")
+    ws["A1"] = "San Pretta · Stock y Demanda · " + datetime.now().strftime("%d/%m/%Y")
+    ws["A1"].font = Font(name="Arial", bold=True, size=13, color=brown_dark)
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A1"].fill = PatternFill("solid", fgColor="F5EDE6")
+    ws.row_dimensions[1].height = 28
+
+    # Headers row 3
+    headers = ["Artículo", "Talle", "Stock Restante", "Días sin Ventas",
+               "Días en Catálogo", "Notif. Totales", "Notif. Pendientes", "Índice Demanda", "Alerta"]
+    col_widths = [40, 8, 13, 13, 14, 13, 15, 13, 20]
+
+    for col_idx, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=3, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = border
+        ws.column_dimensions[get_column_letter(col_idx)].width = w
+    ws.row_dimensions[3].height = 32
+
+    row = 4
+    for product in summary_data.get("products", []):
+        pname = product["name"]
+        variants = product.get("variants", [])
+        if not variants:
+            continue
+
+        # Product sub-header
+        for c in range(1, 10):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = subheader_fill
+            cell.border = border
+        ws.cell(row=row, column=1, value=pname).font = subheader_font
+        ws.cell(row=row, column=1).alignment = left_align
+        ws.merge_cells(f"A{row}:I{row}")
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+        for v in variants:
+            vname = v.get("variant_name", "")
+            stock = v.get("stock", 0)
+
+            sale_dates = v.get("sale_dates", [])
+            if sale_dates:
+                try:
+                    last = datetime.strptime(sorted(sale_dates)[-1], "%Y-%m-%d")
+                    dias_sin_ventas = (datetime.now() - last).days
+                except:
+                    dias_sin_ventas = None
+            else:
+                dias_sin_ventas = None
+
+            dias_catalogo = v.get("days_in_catalog", None)
+
+            d_key = (pname, vname)
+            dem = demand.get(d_key, {})
+            notif_total = dem.get("total", 0)
+            notif_pend = dem.get("pendientes", 0)
+
+            if stock == 0 and notif_pend > 0:
+                alerta = "Sin stock c/demanda"
+                row_fill = PatternFill("solid", fgColor="FAEAEA")
+            elif notif_total > 10:
+                alerta = "Alta demanda"
+                row_fill = PatternFill("solid", fgColor="FFF3E0")
+            elif dias_sin_ventas is not None and dias_sin_ventas > 60 and stock > 0:
+                alerta = "Sin movimiento"
+                row_fill = PatternFill("solid", fgColor="F5F5F5")
+            elif notif_total > 0:
+                alerta = "Con interés"
+                row_fill = None
+            else:
+                alerta = ""
+                row_fill = None
+
+            values = [pname, vname, stock, dias_sin_ventas, dias_catalogo,
+                      notif_total or None, notif_pend or None, notif_total or None, alerta]
+
+            for c_idx, val in enumerate(values, 1):
+                cell = ws.cell(row=row, column=c_idx, value=val)
+                cell.font = normal_font
+                cell.border = border
+                cell.alignment = center_align if c_idx > 1 else left_align
+                if row_fill:
+                    cell.fill = row_fill
+            ws.row_dimensions[row].height = 16
+            row += 1
+
+    ws.freeze_panes = "A4"
+
+    # Sheet 2: Demand ranking
+    ws2 = wb.create_sheet("Ranking Demanda")
+    h2 = ["Artículo", "Talle", "Notif. Totales", "Notif. Pendientes"]
+    w2 = [40, 8, 14, 16]
+    for col_idx, (h, w) in enumerate(zip(h2, w2), 1):
+        cell = ws2.cell(row=1, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = border
+        ws2.column_dimensions[get_column_letter(col_idx)].width = w
+
+    sorted_demand = sorted(demand.items(), key=lambda x: x[1]["pendientes"], reverse=True)
+    for r2, ((pn, vn), dv) in enumerate(sorted_demand, 2):
+        if dv["total"] == 0:
+            continue
+        fill2 = PatternFill("solid", fgColor="FFF3E0") if dv["pendientes"] > 5 else None
+        for c_idx, val in enumerate([pn, vn, dv["total"], dv["pendientes"]], 1):
+            cell = ws2.cell(row=r2, column=c_idx, value=val)
+            cell.font = normal_font
+            cell.border = border
+            cell.alignment = center_align if c_idx > 1 else left_align
+            if fill2:
+                cell.fill = fill2
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 _cache = {}
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -398,6 +592,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 html = LOGIN_HTML.replace("{error}", '<div class="error">Usuario o contraseña incorrectos</div>')
                 self.wfile.write(html.encode())
+        elif self.path == "/export_upload":
+            if not check_session(self):
+                self.send_response(403); self.end_headers(); return
+            self.serve_export_upload()
         else:
             self.send_response(404); self.end_headers()
     def do_GET(self):
@@ -427,6 +625,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             _cache.clear()
             self.send_response(200); self.send_cors(); self.end_headers()
             self.wfile.write(b'{"ok":true}')
+        elif self.path.startswith("/export"):
+            self.serve_export()
         else:
             self.send_response(404); self.end_headers()
     def serve_file(self, filename, content_type):
@@ -440,6 +640,85 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except FileNotFoundError:
             self.send_response(404); self.end_headers()
             self.wfile.write(b"Archivo no encontrado")
+    def serve_export_upload(self):
+        """Receive multipart POST with CSV + days, return xlsx."""
+        if not OPENPYXL_OK:
+            self.send_response(500); self.end_headers()
+            self.wfile.write(b'openpyxl no instalado'); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            content_type = self.headers.get("Content-Type", "")
+            # Parse boundary
+            boundary = None
+            for part in content_type.split(";"):
+                part = part.strip()
+                if part.startswith("boundary="):
+                    boundary = part[9:].strip().encode()
+            demand = {}
+            days = 90
+            if boundary:
+                parts = body.split(b"--" + boundary)
+                for part in parts:
+                    if b"Content-Disposition" not in part:
+                        continue
+                    header_end = part.find(b"\r\n\r\n")
+                    if header_end == -1:
+                        continue
+                    header_raw = part[:header_end].decode(errors="replace")
+                    data = part[header_end+4:].rstrip(b"\r\n--")
+                    if 'name="csv"' in header_raw:
+                        csv_text = data.decode("utf-8-sig", errors="replace")
+                        reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
+                        demand = _parse_demand_rows(reader)
+                    elif 'name="days"' in header_raw:
+                        try:
+                            days = int(data.decode().strip())
+                        except:
+                            days = 90
+            key = f"s{days}"
+            if key not in _cache:
+                set_progress(0, "Iniciando...")
+                _cache[key] = build_summary(days)
+                set_progress(100, "Listo")
+            xlsx_bytes = build_export_xlsx(_cache[key], demand)
+            filename = f"sanpretta_stock_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(xlsx_bytes)))
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(xlsx_bytes)
+        except Exception as e:
+            print(f"  [export_upload] Error: {e}")
+            self.send_response(500); self.end_headers()
+            self.wfile.write(str(e).encode())
+
+    def serve_export(self):
+        if not OPENPYXL_OK:
+            self.send_response(500); self.end_headers()
+            self.wfile.write(b'openpyxl no instalado')
+            return
+        qs = parse_qs(urlparse(self.path).query)
+        days = int(qs.get("days", ["90"])[0])
+        key = f"s{days}"
+        if key not in _cache:
+            set_progress(0, "Iniciando...")
+            _cache[key] = build_summary(days)
+            set_progress(100, "Listo")
+        csv_path = qs.get("csv", [DEMAND_CSV_PATH])[0]
+        demand = load_demand_csv(csv_path)
+        xlsx_bytes = build_export_xlsx(_cache[key], demand)
+        filename = f"sanpretta_stock_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(xlsx_bytes)))
+        self.send_cors()
+        self.end_headers()
+        self.wfile.write(xlsx_bytes)
+
     def serve_summary(self):
         qs = parse_qs(urlparse(self.path).query)
         days = int(qs.get("days", ["90"])[0])
