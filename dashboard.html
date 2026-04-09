@@ -706,9 +706,11 @@ function parseDemandCsv(dataUrl, diasFiltro) {
     }
     const result = {};
     for (const [key, emails] of Object.entries(raw)) {
+      const emailList = Object.entries(emails).map(([email, status]) => ({ email, status }));
       result[key] = {
-        total: Object.keys(emails).length,
-        pendientes: Object.values(emails).filter(s => s === 'unsent').length
+        total: emailList.length,
+        pendientes: emailList.filter(e => e.status === 'unsent').length,
+        emails: emailList.sort((a, b) => a.status === 'unsent' ? -1 : 1)
       };
     }
     return result;
@@ -1365,10 +1367,11 @@ function renderReposicion(products) {
   panel.style.display = 'block';
   document.getElementById('reposicion-count').textContent = `${modelos.length} modelos`;
 
-  const html = modelos.map(m => {
+  const html = modelos.map((m, mi) => {
     const urgente = m.sinStockConDemanda > 0;
     const borderColor = urgente ? '#e74c3c' : '#e67e22';
     const icon = urgente ? '🔥' : '👁';
+    const modeloId = `repos-modelo-${mi}`;
 
     // Distribution pills
     const distribHtml = m.distrib
@@ -1385,23 +1388,60 @@ function renderReposicion(products) {
         </div>`;
       }).join('');
 
+    // Email detail per talle
+    const emailsHtml = m.talles
+      .filter(t => t.pendientes > 0 || (t.emails && t.emails.length > 0))
+      .map(t => {
+        const d = demandData[normalizeName(m.name) + '|||' + t.talle];
+        if (!d || !d.emails || !d.emails.length) return '';
+        const emailRows = d.emails.map(e =>
+          `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:9px;font-weight:600;color:${e.status==='unsent'?'#c0392b':'#27ae60'};min-width:60px">${e.status==='unsent'?'⏳ Espera':'✓ Notif.'}</span>
+            <span style="font-size:11px;color:var(--text2);font-family:monospace">${e.email}</span>
+          </div>`
+        ).join('');
+        return `<div style="margin-bottom:0.75rem">
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Talle ${t.talle} — ${d.pendientes} esperando</div>
+          ${emailRows}
+        </div>`;
+      }).join('');
+
     const resumen = [];
     if (m.totalPendientes > 0) resumen.push(`${m.totalPendientes} personas esperando`);
     if (m.totalVentasSem > 0) resumen.push(`~${Math.round(m.totalVentasSem * 10)/10} pares/semana`);
 
-    return `<div style="border-left:3px solid ${borderColor};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:1rem 1.25rem;margin-bottom:0.75rem;background:var(--cream);border:1px solid var(--border);border-left-width:3px;border-left-color:${borderColor}">
-      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.6rem">
-        <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:500;color:var(--text)">${icon} ${m.name}</span>
-        <span style="font-size:10px;color:var(--text3)">${resumen.join(' · ')}</span>
+    return `<div style="border-left:3px solid ${borderColor};border-radius:0 var(--radius-sm) var(--radius-sm) 0;margin-bottom:0.75rem;background:var(--cream);border:1px solid var(--border);border-left-width:3px;border-left-color:${borderColor}">
+      <div style="padding:1rem 1.25rem;cursor:pointer" onclick="toggleReposicionDetalle('${modeloId}')">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:0.6rem">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:500;color:var(--text)">${icon} ${normalizeName(m.name)}</span>
+            <span style="font-size:10px;color:var(--text3)">${resumen.join(' · ')}</span>
+          </div>
+          <span style="font-size:10px;color:var(--text3)" id="${modeloId}-arrow">▾ ver personas</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-right:4px">Pedir ${MIN_PARES}+ pares:</span>
+          ${distribHtml}
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-right:4px">Pedir ${MIN_PARES}+ pares:</span>
-        ${distribHtml}
+      <div id="${modeloId}" style="display:none;padding:0 1.25rem 1rem;border-top:1px solid var(--border)">
+        <div style="margin-top:0.75rem;font-size:11px">
+          ${emailsHtml || '<span style="color:var(--text3)">Sin emails disponibles</span>'}
+        </div>
       </div>
     </div>`;
   }).join('');
 
   document.getElementById('reposicion-content').innerHTML = html;
+}
+
+function toggleReposicionDetalle(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById(id + '-arrow');
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.textContent = isOpen ? '▾ ver personas' : '▴ ocultar';
 }
 
 function togglePanel(id) {
