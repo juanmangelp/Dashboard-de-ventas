@@ -1245,6 +1245,16 @@ function demandBadge(pname, vname) {
 function renderTable(products) {
   const tbody = document.getElementById('main-table');
   let html = '';
+  // Debug: log first few product names from API vs CSV keys
+  if (Object.keys(demandData).length > 0) {
+    console.log('[TABLE] Primeros nombres API:', products.slice(0,3).map(p => JSON.stringify(p.name)));
+    const csvKeys = Object.keys(demandData).slice(0,3);
+    console.log('[TABLE] Primeras keys CSV:', csvKeys.map(k => JSON.stringify(k)));
+    // Try to find a match
+    const firstCsvProduct = Object.keys(demandData)[0].split('|||')[0];
+    const apiMatch = products.find(p => p.name === firstCsvProduct);
+    console.log('[TABLE] CSV producto:', JSON.stringify(firstCsvProduct), '-> Match en API:', apiMatch ? 'SI' : 'NO');
+  }
   products.forEach(p => {
     const pid = `p${p.id}`;
     // Check if any variant has demand
