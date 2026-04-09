@@ -685,20 +685,25 @@ function parseDemandCsv(dataUrl, diasFiltro) {
     const base64 = dataUrl.split(',')[1];
     const text = decodeURIComponent(escape(atob(base64)));
     const lines = text.split('\n');
+    console.log('[CSV] Total lineas:', lines.length);
+    console.log('[CSV] Header:', lines[0]);
     if (!lines.length) return {};
-    // Detect separator
     const sep = lines[0].includes(';') ? ';' : ',';
+    console.log('[CSV] Separador:', sep);
     const headers = lines[0].replace(/^\uFEFF/, '').split(sep).map(h => h.replace(/"/g,'').trim());
+    console.log('[CSV] Headers:', headers);
     const idx = (name) => headers.indexOf(name);
+    console.log('[CSV] idx productName:', idx('productName'), 'idx productVariantName:', idx('productVariantName'), 'idx email:', idx('email'), 'idx status:', idx('status'));
     const cutoff = diasFiltro > 0 ? new Date(Date.now() - diasFiltro * 86400000) : null;
-    // raw[key][email] = status
+    console.log('[CSV] Filtro dias:', diasFiltro, 'cutoff:', cutoff);
     const raw = {};
+    let skippedDate = 0, skippedCols = 0, processed = 0;
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(sep).map(c => c.replace(/"/g,'').trim());
-      if (cols.length < 4) continue;
+      if (cols.length < 4) { skippedCols++; continue; }
       if (cutoff) {
         const fecha = new Date(cols[idx('createdDate')]);
-        if (isNaN(fecha) || fecha < cutoff) continue;
+        if (isNaN(fecha) || fecha < cutoff) { skippedDate++; continue; }
       }
       const key = cols[idx('productName')] + '|||' + cols[idx('productVariantName')];
       const email = (cols[idx('email')] || '').toLowerCase();
@@ -706,7 +711,9 @@ function parseDemandCsv(dataUrl, diasFiltro) {
       if (!email) continue;
       if (!raw[key]) raw[key] = {};
       if (!raw[key][email] || status === 'unsent') raw[key][email] = status;
+      processed++;
     }
+    console.log('[CSV] Procesadas:', processed, 'Saltadas por fecha:', skippedDate, 'Saltadas por cols:', skippedCols);
     const result = {};
     for (const [key, emails] of Object.entries(raw)) {
       result[key] = {
@@ -714,9 +721,14 @@ function parseDemandCsv(dataUrl, diasFiltro) {
         pendientes: Object.values(emails).filter(s => s === 'unsent').length
       };
     }
+    console.log('[CSV] Variantes con demanda:', Object.keys(result).length);
+    if (Object.keys(result).length > 0) {
+      const firstKey = Object.keys(result)[0];
+      console.log('[CSV] Ejemplo key:', JSON.stringify(firstKey), '-> ', result[firstKey]);
+    }
     return result;
   } catch(e) {
-    console.error('Error parseando CSV demanda:', e);
+    console.error('[CSV] Error parseando CSV demanda:', e);
     return {};
   }
 }
