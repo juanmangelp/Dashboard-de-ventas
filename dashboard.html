@@ -671,7 +671,6 @@ function onCsvLoaded(input) {
     document.querySelector('.export-csv-label').classList.add('loaded');
     diasFiltroCsvActual = parseInt(document.getElementById('dias-filtro-csv').value) || 0;
     demandData = parseDemandCsv(demandCsvContent, diasFiltroCsvActual);
-    console.log('[CSV] Parseado:', Object.keys(demandData).length, 'variantes con demanda');
     if (currentData) {
       renderTable(currentData.products);
       renderReposicion(currentData.products);
@@ -685,25 +684,18 @@ function parseDemandCsv(dataUrl, diasFiltro) {
     const base64 = dataUrl.split(',')[1];
     const text = decodeURIComponent(escape(atob(base64)));
     const lines = text.split('\n');
-    console.log('[CSV] Total lineas:', lines.length);
-    console.log('[CSV] Header:', lines[0]);
     if (!lines.length) return {};
     const sep = lines[0].includes(';') ? ';' : ',';
-    console.log('[CSV] Separador:', sep);
     const headers = lines[0].replace(/^\uFEFF/, '').split(sep).map(h => h.replace(/"/g,'').trim());
-    console.log('[CSV] Headers:', headers);
     const idx = (name) => headers.indexOf(name);
-    console.log('[CSV] idx productName:', idx('productName'), 'idx productVariantName:', idx('productVariantName'), 'idx email:', idx('email'), 'idx status:', idx('status'));
     const cutoff = diasFiltro > 0 ? new Date(Date.now() - diasFiltro * 86400000) : null;
-    console.log('[CSV] Filtro dias:', diasFiltro, 'cutoff:', cutoff);
     const raw = {};
-    let skippedDate = 0, skippedCols = 0, processed = 0;
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(sep).map(c => c.replace(/"/g,'').trim());
-      if (cols.length < 4) { skippedCols++; continue; }
+      if (cols.length < 4) continue;
       if (cutoff) {
         const fecha = new Date(cols[idx('createdDate')]);
-        if (isNaN(fecha) || fecha < cutoff) { skippedDate++; continue; }
+        if (isNaN(fecha) || fecha < cutoff) continue;
       }
       const key = cols[idx('productName')] + '|||' + cols[idx('productVariantName')];
       const email = (cols[idx('email')] || '').toLowerCase();
@@ -711,20 +703,13 @@ function parseDemandCsv(dataUrl, diasFiltro) {
       if (!email) continue;
       if (!raw[key]) raw[key] = {};
       if (!raw[key][email] || status === 'unsent') raw[key][email] = status;
-      processed++;
     }
-    console.log('[CSV] Procesadas:', processed, 'Saltadas por fecha:', skippedDate, 'Saltadas por cols:', skippedCols);
     const result = {};
     for (const [key, emails] of Object.entries(raw)) {
       result[key] = {
         total: Object.keys(emails).length,
         pendientes: Object.values(emails).filter(s => s === 'unsent').length
       };
-    }
-    console.log('[CSV] Variantes con demanda:', Object.keys(result).length);
-    if (Object.keys(result).length > 0) {
-      const firstKey = Object.keys(result)[0];
-      console.log('[CSV] Ejemplo key:', JSON.stringify(firstKey), '-> ', result[firstKey]);
     }
     return result;
   } catch(e) {
@@ -1226,9 +1211,16 @@ function renderEstancadoCards(items) {
 }
 
 // --- TABLA ---
+function normalizeName(name) {
+  return name
+    .replace(/"/g, '')
+    .replace(/\s*\*PRE VENTA[^*]*\*\s*/gi, '')
+    .trim();
+}
+
 function demandBadge(pname, vname) {
   if (!Object.keys(demandData).length) return '';
-  const key = pname + '|||' + vname;
+  const key = normalizeName(pname) + '|||' + normalizeName(vname);
   const d = demandData[key];
   if (!d || d.total === 0) return '';
   if (d.pendientes > 0) {
@@ -1245,22 +1237,13 @@ function demandBadge(pname, vname) {
 function renderTable(products) {
   const tbody = document.getElementById('main-table');
   let html = '';
-  // Debug: log first few product names from API vs CSV keys
-  if (Object.keys(demandData).length > 0) {
-    console.log('[TABLE] Primeros nombres API:', products.slice(0,3).map(p => JSON.stringify(p.name)));
-    const csvKeys = Object.keys(demandData).slice(0,3);
-    console.log('[TABLE] Primeras keys CSV:', csvKeys.map(k => JSON.stringify(k)));
-    // Try to find a match
-    const firstCsvProduct = Object.keys(demandData)[0].split('|||')[0];
-    const apiMatch = products.find(p => p.name === firstCsvProduct);
-    console.log('[TABLE] CSV producto:', JSON.stringify(firstCsvProduct), '-> Match en API:', apiMatch ? 'SI' : 'NO');
-  }
   products.forEach(p => {
     const pid = `p${p.id}`;
     // Check if any variant has demand
-    const hasDemand = Object.keys(demandData).some(k => k.startsWith(p.name + '|||'));
+    const pNameClean = normalizeName(p.name);
+    const hasDemand = Object.keys(demandData).some(k => k.startsWith(pNameClean + '|||'));
     const totalPendientes = p.variants.reduce((acc, v) => {
-      const d = demandData[p.name + '|||' + v.variant_name];
+      const d = demandData[pNameClean + '|||' + v.variant_name];
       return acc + (d ? d.pendientes : 0);
     }, 0);
     const demandSummary = totalPendientes > 0
@@ -1275,7 +1258,7 @@ function renderTable(products) {
     </tr>`;
     p.variants.forEach(v => {
       if (!v.variant_name) return;
-      const db = demandBadge(p.name, v.variant_name);
+      const db = demandBadge(pNameClean, v.variant_name);
       html += `<tr class="variant-row hidden"
         data-pid="${pid}"
         data-search="${p.name.toLowerCase()} ${v.variant_name.toLowerCase()}"
@@ -1347,7 +1330,7 @@ function renderReposicion(products) {
     const talles = [];
     p.variants.forEach(v => {
       if (!v.variant_name) return;
-      const d = demandData[p.name + '|||' + v.variant_name] || {};
+      const d = demandData[normalizeName(p.name) + '|||' + v.variant_name] || {};
       talles.push({
         talle: v.variant_name,
         stock: v.stock || 0,
