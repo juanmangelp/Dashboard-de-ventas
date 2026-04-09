@@ -1103,26 +1103,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def serve_summary(self):
         qs = parse_qs(urlparse(self.path).query)
-        days = int(qs.get("days", ["90"])[0])
-        force = qs.get("force", ["0"])[0] == "1"
-        key = f"s{days}"
+        date_from = qs.get("date_from", [None])[0]
+        date_to   = qs.get("date_to",   [None])[0]
+        force     = qs.get("force",     ["0"])[0] == "1"
 
+        # Key: custom range or days
+        if date_from and date_to:
+            key = f"custom_{date_from}_{date_to}"
+            days = None
+        else:
+            days = int(qs.get("days", ["90"])[0])
+            key = f"s{days}"
+
+        # Fetch raw data if needed
         if force:
-            # Manual refresh: full fetch from API
             set_progress(0, "Actualizando todo desde Tiendanube...")
             fetch_raw_data(incremental=False)
             _cache.clear()
         elif _raw_cache["all_orders"] is None:
-            # First load after startup: incremental if we know last_updated, full otherwise
             set_progress(0, "Iniciando...")
             fetch_raw_data(incremental=_raw_cache["last_updated"] is not None)
             _cache.clear()
 
         if key not in _cache:
-            set_progress(92, f"Calculando resumen {days}d...")
-            _cache[key] = compute_summary(days=days)
+            set_progress(92, f"Calculando resumen...")
+            _cache[key] = compute_summary(days=days, date_from=date_from, date_to=date_to)
             set_progress(100, "Listo")
-            # Save to Gist: use 90d if available, otherwise current key
+            # Save 90d version to Gist as persistent cache
             save_key = "s90" if "s90" in _cache else key
             to_save = dict(_cache[save_key])
             to_save["_last_updated"] = _raw_cache.get("last_updated", "")

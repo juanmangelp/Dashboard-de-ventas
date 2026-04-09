@@ -433,6 +433,20 @@ tr:last-child td { border-bottom: none; }
     </div><!-- /estancado-panel -->
 
     <!-- Tabla detalle -->
+    <!-- Panel Reposición por Modelo -->
+    <div class="panel" id="reposicion-panel" style="display:none">
+      <div class="panel-title panel-toggle" onclick="togglePanel('reposicion')">
+        Reposición sugerida por modelo
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="panel-title-count" id="reposicion-count"></span>
+          <span class="toggle-arrow">▾</span>
+        </div>
+      </div>
+      <div class="panel-body collapsed" id="reposicion-body">
+        <div id="reposicion-content"></div>
+      </div>
+    </div>
+
     <div class="panel" id="main-table-panel">
       <div class="panel-title panel-toggle" onclick="togglePanel('ventas')">
         Ventas por producto y talle
@@ -699,7 +713,10 @@ function onDiasFiltroChange() {
   if (!demandCsvContent) return;
   diasFiltroCsvActual = parseInt(document.getElementById('dias-filtro-csv').value) || 0;
   demandData = parseDemandCsv(demandCsvContent, diasFiltroCsvActual);
-  if (currentData) renderTable(currentData.products);
+  if (currentData) {
+    renderTable(currentData.products);
+    renderReposicion(currentData.products);
+  }
 }
 
 async function exportarExcel() {
@@ -879,6 +896,7 @@ function renderAll() {
   populateFiltros(d.products, d.stagnant || []);
   renderEstancado(d.stagnant || []);
   renderTable(d.products);
+  renderReposicion(d.products);
   renderPedido(d.products);
   renderBestSellers(d.products, d.days);
   renderShippingByMonth(d.shipping_by_month || {}, d.shipping_cost || 0);
@@ -1241,6 +1259,132 @@ function renderTable(products) {
     });
   });
   tbody.innerHTML = html;
+}
+
+function calcularReposicionModelo(talles, minPares) {
+  // Score por talle = pendientes * 2 + ventasSemana
+  // Si score == 0 para todos, no reponer
+  const scores = talles.map(t => ({
+    talle: t.talle,
+    stock: t.stock,
+    pendientes: t.pendientes,
+    ventasSem: t.ventasSem,
+    score: (t.pendientes * 2) + t.ventasSem
+  })).filter(t => t.score > 0 || (t.stock === 0 && t.pendientes > 0));
+
+  if (!scores.length) return null;
+
+  const totalScore = scores.reduce((s, t) => s + t.score, 0);
+  if (totalScore === 0) return null;
+
+  // Distribute minPares proportionally, minimum 1 per talle with signal
+  let distrib = scores.map(t => ({
+    ...t,
+    sugerido: Math.max(1, Math.round((t.score / totalScore) * minPares))
+  }));
+
+  // Adjust to reach exactly minPares
+  let total = distrib.reduce((s, t) => s + t.sugerido, 0);
+  // Add to highest score first if under
+  while (total < minPares) {
+    distrib.sort((a, b) => b.score - a.score);
+    distrib[0].sugerido++;
+    total++;
+  }
+  // Remove from lowest score if over
+  while (total > minPares) {
+    distrib.sort((a, b) => a.score - b.score);
+    if (distrib[0].sugerido > 1) { distrib[0].sugerido--; total--; }
+    else break;
+  }
+
+  return distrib;
+}
+
+function renderReposicion(products) {
+  const panel = document.getElementById('reposicion-panel');
+  const MIN_PARES = 4;
+
+  if (!Object.keys(demandData).length) { panel.style.display = 'none'; return; }
+
+  const modelos = [];
+
+  products.forEach(p => {
+    const talles = [];
+    p.variants.forEach(v => {
+      if (!v.variant_name) return;
+      const d = demandData[p.name + '|||' + v.variant_name] || {};
+      talles.push({
+        talle: v.variant_name,
+        stock: v.stock || 0,
+        pendientes: d.pendientes || 0,
+        ventasSem: Math.round((v.historical_rate || v.rate || 0) * 7 * 10) / 10
+      });
+    });
+
+    if (!talles.length) return;
+
+    const totalPendientes = talles.reduce((s, t) => s + t.pendientes, 0);
+    const sinStockConDemanda = talles.filter(t => t.stock === 0 && t.pendientes > 0).length;
+    const totalVentasSem = talles.reduce((s, t) => s + t.ventasSem, 0);
+
+    // Only show if there's a real signal
+    if (totalPendientes === 0 && sinStockConDemanda === 0) return;
+
+    const distrib = calcularReposicionModelo(talles, MIN_PARES);
+    if (!distrib) return;
+
+    modelos.push({ name: p.name, talles, distrib, totalPendientes, sinStockConDemanda, totalVentasSem });
+  });
+
+  // Sort: models with stock=0 + demand first, then by total pendientes
+  modelos.sort((a, b) => {
+    if (b.sinStockConDemanda !== a.sinStockConDemanda) return b.sinStockConDemanda - a.sinStockConDemanda;
+    return b.totalPendientes - a.totalPendientes;
+  });
+
+  if (!modelos.length) { panel.style.display = 'none'; return; }
+
+  panel.style.display = 'block';
+  document.getElementById('reposicion-count').textContent = `${modelos.length} modelos`;
+
+  const html = modelos.map(m => {
+    const urgente = m.sinStockConDemanda > 0;
+    const borderColor = urgente ? '#e74c3c' : '#e67e22';
+    const icon = urgente ? '🔥' : '👁';
+
+    // Distribution pills
+    const distribHtml = m.distrib
+      .sort((a, b) => b.sugerido - a.sugerido)
+      .map(t => {
+        const bg = t.stock === 0 && t.pendientes > 0 ? '#faeaea'
+                 : t.pendientes > 0 ? '#fff3e0' : '#f0f0f0';
+        const col = t.stock === 0 && t.pendientes > 0 ? '#c0392b'
+                  : t.pendientes > 0 ? '#e67e22' : '#888';
+        return `<div style="display:inline-flex;flex-direction:column;align-items:center;padding:5px 10px;border-radius:8px;background:${bg};margin:2px;min-width:48px;border:1px solid ${col}22">
+          <span style="font-size:14px;font-weight:700;color:${col}">${t.sugerido}</span>
+          <span style="font-size:10px;color:var(--text3)">T${t.talle}</span>
+          ${t.pendientes > 0 ? `<span style="font-size:8px;color:${col}">${t.pendientes} esp.</span>` : `<span style="font-size:8px;color:#aaa">${t.ventasSem}/sem</span>`}
+        </div>`;
+      }).join('');
+
+    const resumen = [];
+    if (m.totalPendientes > 0) resumen.push(`${m.totalPendientes} personas esperando`);
+    if (m.totalVentasSem > 0) resumen.push(`~${Math.round(m.totalVentasSem * 10)/10} pares/semana`);
+
+    return `<div style="border-left:3px solid ${borderColor};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:1rem 1.25rem;margin-bottom:0.75rem;background:var(--cream);border:1px solid var(--border);border-left-width:3px;border-left-color:${borderColor}">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.6rem">
+        <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:500;color:var(--text)">${icon} ${m.name}</span>
+        <span style="font-size:10px;color:var(--text3)">${resumen.join(' · ')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-right:4px">Pedir ${MIN_PARES}+ pares:</span>
+        ${distribHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('reposicion-content').innerHTML = html;
 }
 
 function togglePanel(id) {
