@@ -665,10 +665,17 @@ function onCsvLoaded(input) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
-    demandCsvContent = e.target.result; // data URL
+    demandCsvContent = e.target.result;
     const label = document.getElementById('csv-label-text');
-    label.textContent = file.name.length > 18 ? file.name.substring(0, 16) + '…' : file.name;
+    label.textContent = file.name.length > 20 ? file.name.substring(0, 18) + '…' : file.name;
     document.querySelector('.export-csv-label').classList.add('loaded');
+    diasFiltroCsvActual = parseInt(document.getElementById('dias-filtro-csv').value) || 0;
+    demandData = parseDemandCsv(demandCsvContent, diasFiltroCsvActual);
+    console.log('[CSV] Parseado:', Object.keys(demandData).length, 'variantes con demanda');
+    if (currentData) {
+      renderTable(currentData.products);
+      renderReposicion(currentData.products);
+    }
   };
   reader.readAsDataURL(file);
 }
