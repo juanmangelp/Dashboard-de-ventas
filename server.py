@@ -902,6 +902,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def send_cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+    def do_HEAD(self):
+        # UptimeRobot y otros monitores usan HEAD — responder 200 OK
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_cors()
+        self.end_headers()
+
     def do_OPTIONS(self):
         self.send_response(200); self.send_cors(); self.end_headers()
 
