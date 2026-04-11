@@ -51,7 +51,7 @@ def _find_gist_id():
     return None
 
 def drive_load_cache():
-    """Load cache from GitHub Gist. Returns dict or None."""
+    """Load summary cache + raw orders from GitHub Gist."""
     if not GITHUB_TOKEN:
         return None
     try:
@@ -60,33 +60,67 @@ def drive_load_cache():
             print("  [Gist] Sin caché previo")
             return None
         gist = _gist_request("GET", f"https://api.github.com/gists/{gist_id}")
+
+        # Load summary
         raw_url = gist["files"]["cache.json"]["raw_url"]
         req = Request(raw_url, headers={"Authorization": f"token {GITHUB_TOKEN}", "User-Agent": "SanPretta-Dashboard"})
         with urlopen(req) as resp:
             data = json.loads(resp.read())
         print(f"  [Gist] Caché cargado OK ({len(data.get('products', []))} productos)")
+
+        # Load raw orders if available (avoids re-fetching from Tiendanube on startup)
+        if "raw_orders.json" in gist["files"]:
+            try:
+                raw_url2 = gist["files"]["raw_orders.json"]["raw_url"]
+                req2 = Request(raw_url2, headers={"Authorization": f"token {GITHUB_TOKEN}", "User-Agent": "SanPretta-Dashboard"})
+                with urlopen(req2) as resp2:
+                    raw_data = json.loads(resp2.read())
+                _raw_cache["all_orders"] = raw_data.get("all_orders", [])
+                _raw_cache["products"] = raw_data.get("products", [])
+                _raw_cache["last_updated"] = raw_data.get("last_updated")
+                # Rebuild variant_map from products
+                if _raw_cache["products"]:
+                    _raw_cache["variant_map"], _raw_cache["product_names"] = build_variant_map(_raw_cache["products"])
+                print(f"  [Gist] Órdenes crudas cargadas: {len(_raw_cache['all_orders'])} órdenes")
+            except Exception as e:
+                print(f"  [Gist] No se pudieron cargar órdenes crudas: {e}")
+
         return data
     except Exception as e:
         print(f"  [Gist] Error cargando caché: {e}")
         return None
 
 def drive_save_cache(data):
-    """Save cache to GitHub Gist."""
+    """Save summary cache + raw orders to GitHub Gist."""
     global _gist_id
     if not GITHUB_TOKEN:
         return
     try:
-        content = json.dumps(data, ensure_ascii=False)
+        summary_content = json.dumps(data, ensure_ascii=False)
+        # Also save raw orders if available (for fast startup)
+        raw_content = None
+        if _raw_cache["all_orders"] is not None:
+            raw_data = {
+                "all_orders": _raw_cache["all_orders"],
+                "products": _raw_cache["products"],
+                "last_updated": _raw_cache["last_updated"]
+            }
+            raw_content = json.dumps(raw_data, ensure_ascii=False)
+            print(f"  [Gist] Guardando {len(_raw_cache['all_orders'])} órdenes crudas")
+
+        files = {"cache.json": {"content": summary_content}}
+        if raw_content:
+            files["raw_orders.json"] = {"content": raw_content}
+
         gist_id = _find_gist_id()
         if gist_id:
-            _gist_request("PATCH", f"https://api.github.com/gists/{gist_id}",
-                         {"files": {"cache.json": {"content": content}}})
+            _gist_request("PATCH", f"https://api.github.com/gists/{gist_id}", {"files": files})
             print("  [Gist] Caché actualizado en GitHub")
         else:
             result = _gist_request("POST", "https://api.github.com/gists", {
                 "description": GIST_DESCRIPTION,
                 "public": False,
-                "files": {"cache.json": {"content": content}}
+                "files": files
             })
             _gist_id = result["id"]
             print(f"  [Gist] Caché creado en GitHub: {_gist_id}")
@@ -910,6 +944,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(LOGIN_HTML.replace("{error}", "").encode())
             return
+        # Public: keepalive - mantiene el caché caliente
+        if self.path == "/keepalive":
+            status = {"ok": True, "cache_keys": list(_cache.keys()), "has_raw": _raw_cache["all_orders"] is not None}
+            if _raw_cache["all_orders"] is None:
+                # Trigger fetch in background so UptimeRobot doesn't timeout
+                threading.Thread(target=self._keepalive_fetch, daemon=True).start()
+                status["msg"] = "fetch iniciado en background"
+            else:
+                status["msg"] = f"{len(_raw_cache['all_orders'])} ordenes en memoria"
+            data = json.dumps(status).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors(); self.end_headers()
+            self.wfile.write(data)
+            return
+
         # Public: diagnostico
         if self.path == "/diagnostico":
             result = {}
@@ -1073,6 +1123,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             print(f"  [export_upload] Error: {e}")
             self.send_response(500); self.end_headers()
             self.wfile.write(str(e).encode())
+
+    def _keepalive_fetch(self):
+        """Background fetch triggered by keepalive ping."""
+        try:
+            if _raw_cache["all_orders"] is None:
+                set_progress(0, "Keepalive: cargando datos...")
+                fetch_raw_data(incremental=_raw_cache["last_updated"] is not None)
+                _cache.clear()
+                summary = compute_summary(days=90)
+                _cache["s90"] = summary
+                to_save = dict(summary)
+                to_save["_last_updated"] = _raw_cache.get("last_updated", "")
+                drive_save_cache(to_save)
+                set_progress(100, "Listo")
+                print("  [Keepalive] Datos cargados en background")
+        except Exception as e:
+            print(f"  [Keepalive] Error: {e}")
 
     def serve_export(self):
         if not OPENPYXL_OK:
