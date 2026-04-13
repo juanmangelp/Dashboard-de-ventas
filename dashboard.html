@@ -954,8 +954,29 @@ function renderAlertas(products) {
   alertasData = [];
   products.forEach(p => {
     p.variants.forEach(v => {
-      if (!v.variant_name || v.dias_stock === null) return;
-      if (v.dias_stock < 14) {
+      if (!v.variant_name) return;
+
+      // Sin stock pero con ventas históricas → urgente
+      if (v.stock === 0 && (v.historical_rate > 0 || v.rate > 0)) {
+        alertasData.push({
+          product: p.name,
+          variant: v.variant_name,
+          dias: 0,
+          stock: 0,
+          rate: v.rate,
+          units: v.units,
+          image: v.image || '',
+          tipo: 'urgente',
+          cat: extractCategoria(p.name),
+          has_promo: v.has_promo || false,
+          sale_dates: v.sale_dates || [],
+          historical_rate: v.historical_rate || 0
+        });
+        return;
+      }
+
+      // Con stock pero pocos días
+      if (v.dias_stock !== null && v.dias_stock < 14) {
         alertasData.push({
           product: p.name,
           variant: v.variant_name,
@@ -1059,7 +1080,7 @@ function renderAlertasPorModelo(items) {
     const tallesHtml = p.talles
       .sort((a,b) => a.dias - b.dias)
       .map(t => {
-        const cls = t.dias < 7 ? 'alerta-talle-chip urgente' : 'alerta-talle-chip reponer';
+        const cls = t.dias <= 0 ? 'alerta-talle-chip urgente' : t.dias < 7 ? 'alerta-talle-chip urgente' : 'alerta-talle-chip reponer';
         // Per-talle reason
         const ventasDias = t.units > 0
           ? `${t.units} venta${t.units > 1 ? 's' : ''} en ${days}d`
@@ -1111,7 +1132,7 @@ function renderAlertasPorTalle(items) {
 
   document.getElementById('alertas-content').innerHTML = sorted.map(group => {
     const rows = group.items.sort((a,b) => a.dias - b.dias).map(o => {
-      const cls = o.dias < 7 ? 'badge-red' : 'badge-amber';
+      const cls = o.dias <= 0 ? 'badge-red' : o.dias < 7 ? 'badge-red' : 'badge-amber';
       return `<tr>
         <td>${o.product}</td>
         <td class="r">Stock: ${o.stock}</td>
