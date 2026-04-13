@@ -76,12 +76,13 @@ def drive_load_cache():
                 with urlopen(req2) as resp2:
                     raw_data = json.loads(resp2.read())
                 _raw_cache["all_orders"] = raw_data.get("all_orders", [])
-                _raw_cache["products"] = raw_data.get("products", [])
                 _raw_cache["last_updated"] = raw_data.get("last_updated")
-                # Rebuild variant_map from products
-                if _raw_cache["products"]:
-                    _raw_cache["variant_map"], _raw_cache["product_names"] = build_variant_map(_raw_cache["products"])
-                print(f"  [Gist] Órdenes crudas cargadas: {len(_raw_cache['all_orders'])} órdenes")
+                # Siempre refrescar productos desde la API para tener stock actualizado
+                print("  [Gist] Actualizando productos desde Tiendanube (stock en tiempo real)...")
+                fresh_products = fetch_products()
+                _raw_cache["products"] = fresh_products
+                _raw_cache["variant_map"], _raw_cache["product_names"] = build_variant_map(fresh_products)
+                print(f"  [Gist] Órdenes crudas: {len(_raw_cache['all_orders'])} · Productos actualizados: {len(fresh_products)}")
             except Exception as e:
                 print(f"  [Gist] No se pudieron cargar órdenes crudas: {e}")
 
@@ -885,15 +886,28 @@ def build_export_xlsx(summary_data, demand):
 _cache = {}
 
 def _init_cache_from_drive():
-    """Load cache from Gist on startup. Restores computed summary only (no raw orders)."""
+    """Load cache from Gist on startup, then do incremental update to get fresh data."""
     data = drive_load_cache()
     if data:
         days = data.get("days", 90)
         key = f"s{days}"
         _cache[key] = data
-        # Store last_updated so incremental fetch knows where to start
-        _raw_cache["last_updated"] = data.get("_last_updated", None)
         print(f"  [Cache] Cargado desde Gist: key={key}, last_updated={_raw_cache['last_updated']}")
+
+        # Si tenemos órdenes en caché, hacer fetch incremental para actualizarlas
+        if _raw_cache["all_orders"] is not None and _raw_cache["last_updated"]:
+            print(f"  [Cache] Actualizando órdenes desde {_raw_cache['last_updated']}...")
+            try:
+                fetch_raw_data(incremental=True)
+                _cache.clear()  # Invalidar resumen viejo
+                summary = compute_summary(days=90)
+                _cache["s90"] = summary
+                to_save = dict(summary)
+                to_save["_last_updated"] = _raw_cache.get("last_updated", "")
+                drive_save_cache(to_save)
+                print("  [Cache] Actualización incremental completada")
+            except Exception as e:
+                print(f"  [Cache] Error en actualización incremental: {e}")
     else:
         print("  [Cache] Sin datos previos en Gist, primera carga completa")
 
