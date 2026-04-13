@@ -292,6 +292,10 @@ def build_variant_map(products):
             try: stock = int(v.get("stock", 0) or 0)
             except: stock = 0
             v_created = v.get("created_at", "") or product_created
+            # Use updated_at when stock > 0: reflects when stock was last added
+            # This avoids marking recently restocked items as stagnant
+            v_updated = v.get("updated_at", "") or v_created
+            v_ref_date = v_updated if stock > 0 else v_created
             v_price = safe_float(v.get("price")) or p_price
             v_promo = safe_float(v.get("promotional_price")) or p_promo
             if v_promo >= v_price: v_promo = 0.0
@@ -300,7 +304,7 @@ def build_variant_map(products):
                 "product_name": pname,
                 "variant_name": vname,
                 "stock": stock,
-                "days_in_catalog": days_since(v_created),
+                "days_in_catalog": days_since(v_ref_date),
                 "image": product_image,
                 "price": v_price,
                 "promo_price": v_promo
