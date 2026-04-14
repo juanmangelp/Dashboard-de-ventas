@@ -1,6 +1,7 @@
 import http.server
 import json
 import os
+import re
 import threading
 import hashlib
 import secrets
@@ -485,10 +486,9 @@ def compute_summary(days=None, date_from=None, date_to=None):
         for item in checkout.get("products", []):
             prod_name_raw = get_name(item.get("name", ""))
             # Tiendanube embeds size in product name: "Taquito Delfina Nude (36)"
-            import re as _re
-            talle_match = _re.search(r'\((\d+)\)', prod_name_raw)
+            talle_match = re.search(r'\((\d+)\)', prod_name_raw)
             talle = talle_match.group(1) if talle_match else ""
-            prod_name = _re.sub(r'\s*\(\d+\)\s*', '', prod_name_raw).strip()
+            prod_name = re.sub(r'\s*\(\d+\)\s*', '', prod_name_raw).strip()
             qty = int(item.get("quantity", 1) or 1)
             precio = float(item.get("price", 0) or 0)
             key = (prod_name, talle)
