@@ -1021,14 +1021,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not check_session(self):
                 self.send_response(403); self.end_headers(); return
             self.serve_export_upload()
-           elif path == "/checkout-raw":
-            checkouts = _raw_cache.get("abandoned_checkouts") or []
-            sample = checkouts[:2]
-            out = json.dumps(sample, indent=2, ensure_ascii=False).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_cors(); self.end_headers()
-            self.wfile.write(out)
         else:
             self.send_response(404); self.end_headers()        else:
             self.send_response(404); self.end_headers()
