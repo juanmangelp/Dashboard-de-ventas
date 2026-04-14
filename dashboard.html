@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>San Pretta ÃÂ· Dashboard</title>
+<title>San Pretta · Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -274,14 +274,14 @@ tr:last-child td { border-bottom: none; }
   <div style="font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text3);text-align:center;margin-top:2px">Beta v0.1.9.5</div>
   <div class="header-controls">
     <select id="period-select" onchange="onPeriodSelect()">
-      <option value="30">30 dÃÂ­as</option>
-      <option value="60">60 dÃÂ­as</option>
-      <option value="90" selected>90 dÃÂ­as</option>
+      <option value="30">30 días</option>
+      <option value="60">60 días</option>
+      <option value="90" selected>90 días</option>
       <option value="custom">Rango personalizado</option>
     </select>
     <div class="date-range-wrap" id="date-range-wrap" style="display:none">
       <input type="date" id="date-from">
-      <span class="period-separator">Ã¢ÂÂ</span>
+      <span class="period-separator">→</span>
       <input type="date" id="date-to">
     </div>
     <button id="refresh-btn">Actualizar</button>
@@ -295,25 +295,20 @@ tr:last-child td { border-bottom: none; }
         <span id="csv-label-text">Subir Notificaciones</span>
         <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvLoaded(this)">
       </label>
-      <label class="export-csv-label btn-outline" id="abandon-csv-label" title="Subir CSV de Carritos Abandonados (Tiendanube)">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><path d="M3 2h10a1 1 0 011 1v7a1 1 0 01-1 1H9l-3 3v-3H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
-        <span id="abandon-csv-label-text">Subir Carritos</span>
-        <input type="file" id="abandon-csv-input" accept=".csv" style="display:none" onchange="onAbandonCsvLoaded(this)">
-      </label>
-      <select id="dias-filtro-csv" title="PerÃÂ­odo de notificaciones a considerar" onchange="onDiasFiltroChange()" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
+      <select id="dias-filtro-csv" title="Período de notificaciones a considerar" onchange="onDiasFiltroChange()" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
         <option value="7">Notif. 7d</option>
         <option value="14">Notif. 14d</option>
         <option value="30" selected>Notif. 30d</option>
         <option value="60">Notif. 60d</option>
         <option value="0">Notif. todas</option>
       </select>
-      <select id="horizonte-select" title="Horizonte de reposiciÃÂ³n" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
+      <select id="horizonte-select" title="Horizonte de reposición" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
         <option value="30">Reponer 30d</option>
         <option value="60" selected>Reponer 60d</option>
         <option value="90">Reponer 90d</option>
         <option value="120">Reponer 120d</option>
       </select>
-      <button id="export-btn" onclick="exportarExcel()" title="Exportar resumen de stock, ventas y reposiciÃÂ³n a un archivo Excel" disabled>
+      <button id="export-btn" onclick="exportarExcel()" title="Exportar resumen de stock, ventas y reposición a un archivo Excel" disabled>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><rect x="1" y="1" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l3 4 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 10V4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         Exportar a Excel
       </button>
@@ -334,27 +329,27 @@ tr:last-child td { border-bottom: none; }
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Unidades vendidas</div>
-        <div class="stat-value" id="s-units">Ã¢ÂÂ</div>
+        <div class="stat-value" id="s-units">—</div>
         <div class="stat-sub" id="s-units-sub"></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Pedidos</div>
-        <div class="stat-value" id="s-orders">Ã¢ÂÂ</div>
+        <div class="stat-value" id="s-orders">—</div>
         <div class="stat-sub" id="s-orders-sub"></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">FacturaciÃÂ³n</div>
-        <div class="stat-value" id="s-revenue">Ã¢ÂÂ</div>
+        <div class="stat-label">Facturación</div>
+        <div class="stat-value" id="s-revenue">—</div>
         <div class="stat-sub" id="s-revenue-sub"></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Ticket promedio</div>
-        <div class="stat-value" id="s-ticket">Ã¢ÂÂ</div>
+        <div class="stat-value" id="s-ticket">—</div>
         <div class="stat-sub" id="s-ticket-sub"></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">EnvÃÂ­os bonificados</div>
-        <div class="stat-value" id="s-shipping">Ã¢ÂÂ</div>
+        <div class="stat-label">Envíos bonificados</div>
+        <div class="stat-value" id="s-shipping">—</div>
         <div class="stat-sub" id="s-shipping-sub"></div>
       </div>
     </div>
@@ -362,10 +357,10 @@ tr:last-child td { border-bottom: none; }
     <!-- Reposicion urgente -->
     <div class="panel" id="alertas-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('alertas')">
-        ReposiciÃÂ³n urgente
+        Reposición urgente
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="alertas-count"></span>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="alertas-body">
@@ -381,7 +376,7 @@ tr:last-child td { border-bottom: none; }
             <input class="filtro-search" id="filtro-search-alerta" placeholder="Producto o talle..." oninput="aplicarFiltrosAlertas()">
           </div>
           <div class="filtro-group">
-            <span class="filtro-label">CategorÃÂ­a</span>
+            <span class="filtro-label">Categoría</span>
             <select class="filtro-select" id="filtro-cat-alerta" onchange="aplicarFiltrosAlertas()">
               <option value="">Todas</option>
             </select>
@@ -395,7 +390,7 @@ tr:last-child td { border-bottom: none; }
           <button class="filtros-reset btn-outline" onclick="resetFiltrosAlertas()">Limpiar</button>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px;font-size:13px;color:var(--text2)">
             <input type="checkbox" id="alerta-sin-promo" onchange="aplicarFiltrosAlertas()" style="accent-color:var(--mocha);width:15px;height:15px;cursor:pointer">
-            Solo artÃÂ­culos sin promociÃÂ³n
+            Solo artículos sin promoción
           </label>
         </div>
 
@@ -410,7 +405,7 @@ tr:last-child td { border-bottom: none; }
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="estancado-count"></span>
           <button class="btn-outline" onclick="event.stopPropagation();imprimirEstancado()">Imprimir / Exportar</button>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="estancado-body">
@@ -421,7 +416,7 @@ tr:last-child td { border-bottom: none; }
           <input class="filtro-search" id="filtro-search-est" placeholder="Producto o talle..." oninput="aplicarFiltrosEstancado()">
         </div>
         <div class="filtro-group">
-          <span class="filtro-label">CategorÃÂ­a</span>
+          <span class="filtro-label">Categoría</span>
           <select class="filtro-select" id="filtro-cat-est" onchange="aplicarFiltrosEstancado()">
             <option value="">Todas</option>
           </select>
@@ -442,36 +437,14 @@ tr:last-child td { border-bottom: none; }
       </div><!-- /estancado-body -->
     </div><!-- /estancado-panel -->
 
-    <!-- Carritos abandonados -->
-    <div class="panel" id="abandon-panel" style="display:none">
-      <div class="panel-title panel-toggle" onclick="togglePanel('abandon')">
-        Carritos abandonados
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="panel-title-count" id="abandon-count"></span>
-          <span class="toggle-arrow">&#9662;</span>
-        </div>
-      </div>
-      <div class="panel-body collapsed" id="abandon-body">
-        <div id="abandon-metrics" style="display:flex;gap:16px;flex-wrap:wrap;padding:1rem 1.2rem 0.5rem"></div>
-        <div class="filtros-bar" style="margin-top:0.5rem">
-          <div class="filtro-group">
-            <span class="filtro-label">Buscar</span>
-            <input class="filtro-search" id="filtro-search-abandon" placeholder="Producto o talle..." oninput="aplicarFiltrosAbandon()">
-          </div>
-          <button class="filtros-reset btn-outline" onclick="resetFiltrosAbandon()">Limpiar</button>
-        </div>
-        <div id="abandon-content" style="padding:0.5rem 1.2rem 1rem"></div>
-      </div>
-    </div>
-
     <!-- Tabla detalle -->
-    <!-- Panel ReposiciÃÂ³n por Modelo -->
+    <!-- Panel Reposición por Modelo -->
     <div class="panel" id="reposicion-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('reposicion')">
-        ReposiciÃÂ³n sugerida por modelo
+        Reposición sugerida por modelo
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="reposicion-count"></span>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="reposicion-body">
@@ -484,7 +457,7 @@ tr:last-child td { border-bottom: none; }
         Ventas por producto y talle
         <div style="display:flex;align-items:center;gap:10px">
           <button class="btn-outline" onclick="event.stopPropagation();imprimirVentas()">Imprimir / Exportar</button>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="ventas-body">
@@ -495,7 +468,7 @@ tr:last-child td { border-bottom: none; }
           <input class="filtro-search" id="filtro-search-ventas" placeholder="Producto o talle..." oninput="aplicarFiltrosVentas()">
         </div>
         <div class="filtro-group">
-          <span class="filtro-label">CategorÃÂ­a</span>
+          <span class="filtro-label">Categoría</span>
           <select class="filtro-select" id="filtro-cat-ventas" onchange="aplicarFiltrosVentas()">
             <option value="">Todas</option>
           </select>
@@ -524,10 +497,10 @@ tr:last-child td { border-bottom: none; }
             <tr>
               <th>Producto / Talle</th>
               <th class="r">Uds vendidas</th>
-              <th class="r">RotaciÃÂ³n</th>
-              <th class="r">FacturaciÃÂ³n</th>
+              <th class="r">Rotación</th>
+              <th class="r">Facturación</th>
               <th class="r">Stock actual</th>
-              <th class="r">DÃÂ­as de stock</th>
+              <th class="r">Días de stock</th>
               <th class="r">Estado</th>
             </tr>
           </thead>
@@ -540,10 +513,10 @@ tr:last-child td { border-bottom: none; }
     <!-- Envios por mes -->
     <div class="panel" id="shipping-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('shipping')">
-        Costos de envÃÂ­o por mes
+        Costos de envío por mes
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="shipping-panel-count"></span>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="shipping-body">
@@ -578,17 +551,17 @@ tr:last-child td { border-bottom: none; }
     <!-- Best Sellers -->
     <div class="panel" id="bs-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('bs')">
-        Best sellers del perÃÂ­odo
+        Best sellers del período
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="bs-count"></span>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="bs-body">
         <div class="bs-tabs" id="bs-tabs"></div>
         <div class="filtros-bar" style="align-items:center">
           <div class="filtro-group">
-            <span class="filtro-label">CategorÃÂ­a</span>
+            <span class="filtro-label">Categoría</span>
             <select class="filtro-select" id="bs-cat" onchange="renderBS()">
               <option value="">Todas</option>
             </select>
@@ -604,50 +577,50 @@ tr:last-child td { border-bottom: none; }
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px;font-size:13px;color:var(--text2)">
             <input type="checkbox" id="bs-sin-promo" onchange="renderBS()" style="accent-color:var(--mocha);width:15px;height:15px;cursor:pointer">
-            Solo artÃÂ­culos sin promociÃÂ³n
+            Solo artículos sin promoción
           </label>
         </div>
         <div id="bs-content"></div>
       </div>
     </div>
 
-    <!-- Pedido a fÃÂ¡brica -->
+    <!-- Pedido a fábrica -->
     <div class="panel" id="pedido-panel" style="display:none">
       <div class="panel-title panel-toggle" onclick="togglePanel('pedido')">
-        Calculadora de pedido a fÃÂ¡brica
+        Calculadora de pedido a fábrica
         <div style="display:flex;align-items:center;gap:10px">
           <span class="panel-title-count" id="pedido-count"></span>
           <button class="btn-outline" onclick="event.stopPropagation();imprimirPedido()">Imprimir / Exportar</button>
-          <span class="toggle-arrow">Ã¢ÂÂ¾</span>
+          <span class="toggle-arrow">▾</span>
         </div>
       </div>
       <div class="panel-body collapsed" id="pedido-body">
 
         <div class="pedido-controls">
           <div class="pedido-control-group">
-            <span class="pedido-control-label">DÃÂ­as hasta entrega</span>
+            <span class="pedido-control-label">Días hasta entrega</span>
             <input class="pedido-control-input" id="pedido-lead" type="number" value="37" min="1" max="120" oninput="recalcularPedido()">
           </div>
           <div class="pedido-control-group">
-            <span class="pedido-control-label">DÃÂ­as de cobertura deseada</span>
+            <span class="pedido-control-label">Días de cobertura deseada</span>
             <input class="pedido-control-input" id="pedido-cobertura" type="number" value="14" min="1" max="90" oninput="recalcularPedido()">
           </div>
           <div class="pedido-control-group">
-            <span class="pedido-control-label">Stock mÃÂ­nimo por talle</span>
+            <span class="pedido-control-label">Stock mínimo por talle</span>
             <input class="pedido-control-input" id="pedido-minimo" type="number" value="4" min="1" max="20" oninput="recalcularPedido()">
           </div>
           <div class="filtro-group">
-            <span class="filtro-label">Filtrar por categorÃÂ­a</span>
+            <span class="filtro-label">Filtrar por categoría</span>
             <select class="filtro-select" id="pedido-cat" onchange="recalcularPedido()">
               <option value="">Todas</option>
             </select>
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
             <input type="checkbox" id="pedido-sin-promo" onchange="recalcularPedido()" style="accent-color:var(--mocha);width:15px;height:15px;cursor:pointer">
-            Solo artÃÂ­culos sin promociÃÂ³n
+            Solo artículos sin promoción
           </label>
           <div class="pedido-control-group">
-            <span class="pedido-control-label">Vel. mÃÂ­nima para producir (uds/dÃÂ­a)</span>
+            <span class="pedido-control-label">Vel. mínima para producir (uds/día)</span>
             <input class="pedido-control-input" id="pedido-min-rate" type="number" value="0.2" min="0" max="5" step="0.05" style="width:110px" oninput="recalcularPedido()">
           </div>
         </div>
@@ -655,15 +628,15 @@ tr:last-child td { border-bottom: none; }
         <div class="pedido-resumen">
           <div class="pedido-resumen-card">
             <div class="pedido-resumen-label">Modelos a reponer</div>
-            <div class="pedido-resumen-value" id="pedido-stat-modelos">Ã¢ÂÂ</div>
+            <div class="pedido-resumen-value" id="pedido-stat-modelos">—</div>
           </div>
           <div class="pedido-resumen-card">
             <div class="pedido-resumen-label">Talles a pedir</div>
-            <div class="pedido-resumen-value" id="pedido-stat-talles">Ã¢ÂÂ</div>
+            <div class="pedido-resumen-value" id="pedido-stat-talles">—</div>
           </div>
           <div class="pedido-resumen-card">
             <div class="pedido-resumen-label">Pares totales</div>
-            <div class="pedido-resumen-value" id="pedido-stat-pares">Ã¢ÂÂ</div>
+            <div class="pedido-resumen-value" id="pedido-stat-pares">—</div>
           </div>
         </div>
 
@@ -683,8 +656,6 @@ tr:last-child td { border-bottom: none; }
 <script>
 const API = window.location.origin;
 let currentData = null;
-let abandonData = null; // datos carritos abandonados parseados
-let abandonFiltrado = [];
 let demandCsvContent = null; // base64 content of uploaded CSV
 let demandData = {}; // parsed: "ProductName|||VariantName" -> {total, pendientes}
 let diasFiltroCsvActual = 30;
@@ -696,7 +667,7 @@ function onCsvLoaded(input) {
   reader.onload = (e) => {
     demandCsvContent = e.target.result;
     const label = document.getElementById('csv-label-text');
-    label.textContent = file.name.length > 20 ? file.name.substring(0, 18) + 'Ã¢ÂÂ¦' : file.name;
+    label.textContent = file.name.length > 20 ? file.name.substring(0, 18) + '…' : file.name;
     document.querySelector('.export-csv-label').classList.add('loaded');
     diasFiltroCsvActual = parseInt(document.getElementById('dias-filtro-csv').value) || 0;
     demandData = parseDemandCsv(demandCsvContent, diasFiltroCsvActual);
@@ -763,7 +734,7 @@ function onDiasFiltroChange() {
 async function exportarExcel() {
   const btn = document.getElementById('export-btn');
   btn.disabled = true;
-  btn.textContent = 'GenerandoÃ¢ÂÂ¦';
+  btn.textContent = 'Generando…';
   try {
     const period = document.getElementById('period-select').value;
     const days = (period === 'custom' || isNaN(Number(period))) ? 90 : Number(period);
@@ -773,7 +744,7 @@ async function exportarExcel() {
     let url = `${API}/export?days=${days}&horizonte=${horizonte}`;
 
     if (demandCsvContent) {
-      // POST CSV content then redirect Ã¢ÂÂ simpler: send as multipart via fetch + blob download
+      // POST CSV content then redirect — simpler: send as multipart via fetch + blob download
       const base64Data = demandCsvContent.split(',')[1];
       const byteChars = atob(base64Data);
       const byteArr = new Uint8Array(byteChars.length);
@@ -796,7 +767,7 @@ async function exportarExcel() {
       a.click();
       URL.revokeObjectURL(dlUrl);
     } else {
-      // No CSV Ã¢ÂÂ direct download
+      // No CSV — direct download
       const resp = await fetch(url);
       if (!resp.ok) throw new Error('Error al exportar');
       const xlsxBlob = await resp.blob();
@@ -915,7 +886,7 @@ async function loadData() {
     stopProgressPolling();
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('error-screen').style.display = 'block';
-    document.getElementById('error-screen').innerHTML = `<strong>Error al cargar datos</strong><br><br>${e.message}<br><br>VerificÃÂ¡ que el servidor Python estÃÂ© corriendo.`;
+    document.getElementById('error-screen').innerHTML = `<strong>Error al cargar datos</strong><br><br>${e.message}<br><br>Verificá que el servidor Python esté corriendo.`;
   }
   document.getElementById('refresh-btn').disabled = false;
 }
@@ -923,20 +894,19 @@ async function loadData() {
 function renderAll() {
   const d = currentData;
   document.getElementById('s-units').textContent = fmt(d.total_units);
-  document.getElementById('s-units-sub').textContent = `${(d.total_units/d.days).toFixed(1)} uds/dÃÂ­a`;
+  document.getElementById('s-units-sub').textContent = `${(d.total_units/d.days).toFixed(1)} uds/día`;
   document.getElementById('s-orders').textContent = fmt(d.total_orders);
-  document.getElementById('s-orders-sub').textContent = `${(d.total_orders/d.days).toFixed(1)} pedidos/dÃÂ­a`;
+  document.getElementById('s-orders-sub').textContent = `${(d.total_orders/d.days).toFixed(1)} pedidos/día`;
   document.getElementById('s-revenue').textContent = '$' + fmt(d.total_revenue);
-  document.getElementById('s-revenue-sub').textContent = `$${fmt(d.total_revenue/d.days)}/dÃÂ­a`;
+  document.getElementById('s-revenue-sub').textContent = `$${fmt(d.total_revenue/d.days)}/día`;
   document.getElementById('s-ticket').textContent = '$' + fmt(d.ticket_promedio);
-  document.getElementById('s-ticket-sub').textContent = `ÃÂºltimos ${d.days} dÃÂ­as`;
+  document.getElementById('s-ticket-sub').textContent = `últimos ${d.days} días`;
   const shippingPerMonth = (d.shipping_cost || 0) / d.days * 30;
   document.getElementById('s-shipping').textContent = '$' + fmt(shippingPerMonth);
-  document.getElementById('s-shipping-sub').textContent = `${d.shipping_orders || 0} envÃÂ­os ÃÂ· promedio/mes`;
+  document.getElementById('s-shipping-sub').textContent = `${d.shipping_orders || 0} envíos · promedio/mes`;
   renderAlertas(d.products);
   populateFiltros(d.products, d.stagnant || []);
   renderEstancado(d.stagnant || []);
-  renderAbandonFromApi(d);
   renderTable(d.products);
   renderReposicion(d.products);
   renderPedido(d.products);
@@ -986,9 +956,8 @@ function renderAlertas(products) {
     p.variants.forEach(v => {
       if (!v.variant_name) return;
 
-      // Sin stock pero con ventas histÃÂ³ricas Ã¢ÂÂ urgente
-      const _abandonC = getAbandonDemand(p.name, v.variant_name);
-      if (v.stock === 0 && (v.historical_rate > 0 || v.rate > 0 || _abandonC > 0)) {
+      // Sin stock pero con ventas históricas → urgente
+      if (v.stock === 0 && (v.historical_rate > 0 || v.rate > 0)) {
         alertasData.push({
           product: p.name,
           variant: v.variant_name,
@@ -1006,7 +975,7 @@ function renderAlertas(products) {
         return;
       }
 
-      // Con stock pero pocos dÃÂ­as
+      // Con stock pero pocos días
       if (v.dias_stock !== null && v.dias_stock < 14) {
         alertasData.push({
           product: p.name,
@@ -1105,7 +1074,7 @@ function renderAlertasPorModelo(items) {
     const avgRate = (p.talles.reduce((s,t) => s + t.rate, 0) / p.talles.length).toFixed(1);
     const days = currentData.days;
     const razon = totalUnits > 0
-      ? `${totalUnits} ventas en ${days} dÃÂ­as ÃÂ· ${fmtRate(parseFloat(avgRate))}`
+      ? `${totalUnits} ventas en ${days} días · ${fmtRate(parseFloat(avgRate))}`
       : fmtRate(parseFloat(avgRate)/1);
 
     const tallesHtml = p.talles
@@ -1122,11 +1091,11 @@ function renderAlertasPorModelo(items) {
                 const [y,m,dd] = d.split('-');
                 return `<div style="opacity:0.8">${dd}/${m}/${y}</div>`;
               }).join('')
-            + (t.sale_dates.length > 8 ? `<div style="opacity:0.5">+${t.sale_dates.length-8} mÃÂ¡s</div>` : '')
+            + (t.sale_dates.length > 8 ? `<div style="opacity:0.5">+${t.sale_dates.length-8} más</div>` : '')
             + '</div>'
           : '';
         return `<div class="${cls} tooltip-wrap">
-          <div class="tooltip-box" style="text-align:left;max-width:160px;white-space:normal">${ventasDias} ÃÂ· stock ${t.stock} ÃÂ· ${fmtRate(t.rate)}${fechasHtml}</div>
+          <div class="tooltip-box" style="text-align:left;max-width:160px;white-space:normal">${ventasDias} · stock ${t.stock} · ${fmtRate(t.rate)}${fechasHtml}</div>
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span class="chip-talle">${t.variant}</span>
             <span class="chip-meta" style="font-weight:500">${t.dias}d</span>
@@ -1167,7 +1136,7 @@ function renderAlertasPorTalle(items) {
       return `<tr>
         <td>${o.product}</td>
         <td class="r">Stock: ${o.stock}</td>
-        <td class="r">${o.rate}/dÃÂ­a</td>
+        <td class="r">${o.rate}/día</td>
         <td class="r"><span class="badge ${cls}">${o.dias}d</span></td>
       </tr>`;
     }).join('');
@@ -1192,8 +1161,8 @@ function renderEstancado(stagnant) {
   document.getElementById('estancado-count').textContent = `${filtered.length} talles sin ventas`;
 
   const tabs = [
-    { id: 'critico', label: 'CrÃÂ­tico', count: criticos.length },
-    { id: 'observacion', label: 'En observaciÃÂ³n', count: observacion.length },
+    { id: 'critico', label: 'Crítico', count: criticos.length },
+    { id: 'observacion', label: 'En observación', count: observacion.length },
     { id: 'nuevo', label: 'Reciente', count: nuevos.length }
   ].filter(t => t.count > 0);
 
@@ -1239,7 +1208,7 @@ function resetFiltrosEstancado() {
 function renderEstancadoCards(items) {
   if (!items.length) { document.getElementById('estancado-content').innerHTML = '<div class="no-items">Sin resultados para los filtros aplicados</div>'; return; }
   document.getElementById('estancado-content').innerHTML = items.map(s => {
-    const tipoLabel = s.tipo === 'critico' ? 'CrÃÂ­tico' : s.tipo === 'observacion' ? 'En observaciÃÂ³n' : 'Reciente';
+    const tipoLabel = s.tipo === 'critico' ? 'Crítico' : s.tipo === 'observacion' ? 'En observación' : 'Reciente';
     const tipoClass = `tipo-${s.tipo}`;
     const meses = Math.floor(s.days_in_catalog / 30);
     const antiguedad = meses >= 12 ? `${Math.floor(meses/12)}a ${meses%12}m` : meses > 0 ? `${meses} mes${meses>1?'es':''}` : `${s.days_in_catalog}d`;
@@ -1258,7 +1227,7 @@ function renderEstancadoCards(items) {
       </div>
       <div class="estancado-card-body">
         <div class="estancado-stat"><div class="estancado-stat-label">Stock</div><div class="estancado-stat-value">${s.stock} uds</div></div>
-        <div class="estancado-stat"><div class="estancado-stat-label">En catÃÂ¡logo</div><div class="estancado-stat-value">${antiguedad}</div></div>
+        <div class="estancado-stat"><div class="estancado-stat-label">En catálogo</div><div class="estancado-stat-value">${antiguedad}</div></div>
       </div>
       <div class="estancado-card-footer">${precioHtml}<div class="estancado-sin-ventas">0 ventas desde su ingreso</div></div>
     </div>`;
@@ -1269,9 +1238,9 @@ function renderEstancadoCards(items) {
 function fmtRate(ratePerDay) {
   const sem = Math.round(ratePerDay * 7 * 10) / 10;
   const mes = Math.round(ratePerDay * 30 * 10) / 10;
-  if (sem === 0 && mes === 0) return 'Ã¢ÂÂ';
+  if (sem === 0 && mes === 0) return '—';
   if (sem < 0.5) return `~${mes}/mes`;
-  return `~${sem}/sem ÃÂ· ~${mes}/mes`;
+  return `~${sem}/sem · ~${mes}/mes`;
 }
 
 function demandBadge(pname, vname) {
@@ -1282,7 +1251,7 @@ function demandBadge(pname, vname) {
   if (d.pendientes > 0) {
     const urgente = d.pendientes >= 5;
     return `<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:600;letter-spacing:0.05em;background:${urgente?'#faeaea':'#fff3e0'};color:${urgente?'#c0392b':'#e67e22'}">
-      ${urgente?'Ã°ÂÂÂ¥':'Ã°ÂÂÂ'} ${d.pendientes} esperando
+      ${urgente?'🔥':'👁'} ${d.pendientes} esperando
     </span>`;
   }
   return `<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:500;letter-spacing:0.05em;background:#f5f5f5;color:#999">
@@ -1302,14 +1271,14 @@ function renderTable(products) {
       return acc + (d ? d.pendientes : 0);
     }, 0);
     const demandSummary = totalPendientes > 0
-      ? `<span style="margin-left:8px;font-size:10px;color:${totalPendientes>=5?'#c0392b':'#e67e22'};font-weight:600">${totalPendientes >= 5 ? 'Ã°ÂÂÂ¥' : 'Ã°ÂÂÂ'} ${totalPendientes} esperando</span>`
+      ? `<span style="margin-left:8px;font-size:10px;color:${totalPendientes>=5?'#c0392b':'#e67e22'};font-weight:600">${totalPendientes >= 5 ? '🔥' : '👁'} ${totalPendientes} esperando</span>`
       : '';
     html += `<tr class="product-row" onclick="toggleProduct('${pid}')">
-      <td><i class="toggle-icon" id="icon-${pid}">Ã¢ÂÂ¶</i>${p.name}${demandSummary}</td>
+      <td><i class="toggle-icon" id="icon-${pid}">▶</i>${p.name}${demandSummary}</td>
       <td class="r">${p.units}</td>
       <td class="r">${(p.units/currentData.days).toFixed(1)}</td>
       <td class="r">$${fmt(p.revenue)}</td>
-      <td class="r">Ã¢ÂÂ</td><td class="r">Ã¢ÂÂ</td><td class="r"></td>
+      <td class="r">—</td><td class="r">—</td><td class="r"></td>
     </tr>`;
     p.variants.forEach(v => {
       if (!v.variant_name) return;
@@ -1325,7 +1294,7 @@ function renderTable(products) {
         <td class="r" style="font-size:10px;white-space:nowrap">${fmtRate(v.rate)}</td>
         <td class="r">$${fmt(v.revenue)}</td>
         <td class="r">${v.stock}</td>
-        <td class="r">${v.dias_stock !== null ? v.dias_stock : 'Ã¢ÂÂ'}</td>
+        <td class="r">${v.dias_stock !== null ? v.dias_stock : '—'}</td>
         <td class="r">${badge(v.dias_stock)}</td>
       </tr>`;
     });
@@ -1386,11 +1355,10 @@ function renderReposicion(products) {
     p.variants.forEach(v => {
       if (!v.variant_name) return;
       const d = demandData[p.name + '|||' + v.variant_name] || {};
-      const abandonCarritos = getAbandonDemand(p.name, v.variant_name);
       talles.push({
         talle: v.variant_name,
         stock: v.stock || 0,
-        pendientes: (d.pendientes || 0) + abandonCarritos,
+        pendientes: d.pendientes || 0,
         ventasSem: Math.round((v.historical_rate || v.rate || 0) * 7 * 10) / 10
       });
     });
@@ -1424,7 +1392,7 @@ function renderReposicion(products) {
   const html = modelos.map(m => {
     const urgente = m.sinStockConDemanda > 0;
     const borderColor = urgente ? '#e74c3c' : '#e67e22';
-    const icon = urgente ? 'Ã°ÂÂÂ¥' : 'Ã°ÂÂÂ';
+    const icon = urgente ? '🔥' : '👁';
 
     // Distribution pills
     const distribHtml = m.distrib
@@ -1448,7 +1416,7 @@ function renderReposicion(products) {
     return `<div style="border-left:3px solid ${borderColor};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:1rem 1.25rem;margin-bottom:0.75rem;background:var(--cream);border:1px solid var(--border);border-left-width:3px;border-left-color:${borderColor}">
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.6rem">
         <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:500;color:var(--text)">${icon} ${m.name}</span>
-        <span style="font-size:10px;color:var(--text3)">${resumen.join(' ÃÂ· ')}</span>
+        <span style="font-size:10px;color:var(--text3)">${resumen.join(' · ')}</span>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
         <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-right:4px">Pedir ${MIN_PARES}+ pares:</span>
@@ -1633,7 +1601,7 @@ function renderShippingDetail() {
             <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:#27ae60">$${fmt(v.costo_cliente||0)}</div>
           </div>
           <div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">EnvÃÂ­os con cargo a tienda</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:4px">Envíos con cargo a tienda</div>
             <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:var(--text)">${v.orders}</div>
           </div>
           <div>
@@ -1701,7 +1669,7 @@ function renderBestSellers(products, days) {
   document.getElementById('bs-count').textContent = `${bsData.length} productos`;
 
   // Build month tabs based on period
-  const tabs = [{ id: 'mes', label: 'Por mes (proyectado)' }, { id: 'periodo', label: `Por perÃÂ­odo (${days}d)` }];
+  const tabs = [{ id: 'mes', label: 'Por mes (proyectado)' }, { id: 'periodo', label: `Por período (${days}d)` }];
   document.getElementById('bs-tabs').innerHTML = tabs.map(t =>
     `<button class="bs-tab ${bsPeriodo === t.id ? 'active' : ''}" onclick="setBsPeriodo('${t.id}')">${t.label}</button>`
   ).join('');
@@ -1711,7 +1679,7 @@ function renderBestSellers(products, days) {
 
 function setBsPeriodo(p) {
   bsPeriodo = p;
-  document.querySelectorAll('.bs-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(p === 'mes' ? 'mes' : 'perÃÂ­odo')));
+  document.querySelectorAll('.bs-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(p === 'mes' ? 'mes' : 'período')));
   renderBS();
 }
 
@@ -1821,10 +1789,10 @@ function recalcularPedido() {
   document.getElementById('pedido-stat-modelos').textContent = totalModelos;
   document.getElementById('pedido-stat-talles').textContent = totalTalles;
   document.getElementById('pedido-stat-pares').textContent = totalPares;
-  document.getElementById('pedido-count').textContent = `${totalModelos} modelos ÃÂ· ${totalPares} pares`;
+  document.getElementById('pedido-count').textContent = `${totalModelos} modelos · ${totalPares} pares`;
 
   if (!productos.length) {
-    document.getElementById('pedido-content').innerHTML = '<div class="no-items">No hay talles que requieran reposiciÃÂ³n con los parÃÂ¡metros actuales</div>';
+    document.getElementById('pedido-content').innerHTML = '<div class="no-items">No hay talles que requieran reposición con los parámetros actuales</div>';
     return;
   }
 
@@ -1849,7 +1817,7 @@ function recalcularPedido() {
         <div style="flex:1">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:2px">${p.cat}</div>
           <div style="font-size:14px;font-weight:400;color:var(--text);margin-bottom:${p.slow?'4px':'0'}">${p.name}</div>
-          ${p.slow ? `<div style="display:inline-flex;align-items:center;gap:5px;font-size:10px;background:var(--amber-light);color:var(--amber);padding:3px 9px;border-radius:20px;border:1px solid rgba(138,96,32,0.2)">Ã¢ÂÂ  RotaciÃÂ³n lenta ÃÂ· considerar antes de producir</div>` : ''}
+          ${p.slow ? `<div style="display:inline-flex;align-items:center;gap:5px;font-size:10px;background:var(--amber-light);color:var(--amber);padding:3px 9px;border-radius:20px;border:1px solid rgba(138,96,32,0.2)">⚠ Rotación lenta · considerar antes de producir</div>` : ''}
         </div>
         <div style="text-align:right">
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Total pedido</div>
@@ -1861,8 +1829,8 @@ function recalcularPedido() {
           <thead><tr>
             <th>Talle</th>
             <th class="r">Stock actual</th>
-            <th class="r">Vel. perÃÂ­odo</th>
-            <th class="r">Vel. histÃÂ³rica</th>
+            <th class="r">Vel. período</th>
+            <th class="r">Vel. histórica</th>
             <th class="r">Cubre hasta</th>
             <th class="r">Pedir</th>
           </tr></thead>
@@ -1874,7 +1842,7 @@ function recalcularPedido() {
 }
 
 function imprimirPedido() {
-  document.getElementById('print-subtitle').textContent = `Pedido a fÃÂ¡brica ÃÂ· ${new Date().toLocaleDateString('es-AR')}`;
+  document.getElementById('print-subtitle').textContent = `Pedido a fábrica · ${new Date().toLocaleDateString('es-AR')}`;
   document.getElementById('main-table-panel').style.display = 'none';
   document.getElementById('estancado-panel').style.display = 'none';
   document.getElementById('alertas-panel').style.display = 'none';
@@ -1885,255 +1853,19 @@ function imprimirPedido() {
 }
 
 function imprimirEstancado() {
-  document.getElementById('print-subtitle').textContent = `Stock sin movimiento ÃÂ· ${new Date().toLocaleDateString('es-AR')} ÃÂ· ${estancadoFiltrado.length} talles`;
+  document.getElementById('print-subtitle').textContent = `Stock sin movimiento · ${new Date().toLocaleDateString('es-AR')} · ${estancadoFiltrado.length} talles`;
   document.getElementById('main-table-panel').style.display = 'none';
   window.print();
   document.getElementById('main-table-panel').style.display = '';
 }
 
 function imprimirVentas() {
-  document.getElementById('print-subtitle').textContent = `Ventas ÃÂºltimos ${currentData.days} dÃÂ­as ÃÂ· ${new Date().toLocaleDateString('es-AR')}`;
+  document.getElementById('print-subtitle').textContent = `Ventas últimos ${currentData.days} días · ${new Date().toLocaleDateString('es-AR')}`;
   document.getElementById('estancado-panel').style.display = 'none';
   document.getElementById('alertas-panel').style.display = 'none';
   window.print();
   document.getElementById('estancado-panel').style.display = '';
   document.getElementById('alertas-panel').style.display = '';
-}
-
-function renderAbandonFromApi(d) {
-  if (!d || !d.abandoned_total_carritos) return;
-  abandonData = {
-    totalCarritos: d.abandoned_total_carritos,
-    totalValor: d.abandoned_total_valor || 0,
-    conPago: d.abandoned_con_pago || 0,
-    porCanal: d.abandoned_por_canal || {},
-    items: (d.abandoned || []).map(a => ({
-      nombreBase: a.product, talle: a.variant,
-      carritos: a.carritos, qty: a.qty, valor: a.valor
-    }))
-  };
-  renderAbandon();
-}
-
-// ---- CARRITOS ABANDONADOS ----
-function onAbandonCsvLoaded(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const label = document.getElementById('abandon-csv-label-text');
-    label.textContent = file.name.length > 18 ? file.name.substring(0,16)+'...' : file.name;
-    document.getElementById('abandon-csv-label').classList.add('loaded');
-    abandonData = parseAbandonCsv(e.target.result);
-    console.log('[Carritos] Parseados:', abandonData.totalCarritos, 'carritos');
-    renderAbandon();
-    if (currentData) {
-      renderReposicion(currentData.products);
-      renderAlertas(currentData.products);
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function parseAbandonCsv(dataUrl) {
-  try {
-    const base64 = dataUrl.split(',')[1];
-    const text = decodeURIComponent(escape(atob(base64)));
-    const lines = text.split('
-').filter(l => l.trim());
-    const sep = ';';
-    const rawHeaders = lines[0].replace(/^ï»¿/, '');
-    const headers = rawHeaders.split(sep).map(h => h.replace(/"/g,'').trim());
-    const idx = (n) => headers.indexOf(n);
-    const carritosMeta = {};
-    const itemsRaw = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = [];
-      let cur = '', inQ = false;
-      for (const ch of lines[i]) {
-        if (ch === '"') { inQ = !inQ; }
-        else if (ch === sep && !inQ) { cols.push(cur.trim()); cur = ''; }
-        else cur += ch;
-      }
-      cols.push(cur.trim());
-      const cid = cols[idx('ID del carrito')];
-      if (!cid) continue;
-      const prodNombre = cols[idx('Nombre del producto')] || '';
-      const qty = parseInt(cols[idx('Cantidad')] || '1') || 1;
-      const precioStr = (cols[idx('Precio unitario')] || '0').replace(/[$. ]/g,'').replace(',','.');
-      const precioUnit = parseFloat(precioStr) || 0;
-      const talleMatch = prodNombre.match(/((d+))/);
-      const talle = talleMatch ? talleMatch[1] : '';
-      const nombreBase = prodNombre.replace(/s*(d+)s*/g,'').replace(/s**PRE VENTA[^*]**s*/gi,'').trim();
-      if (prodNombre) itemsRaw.push({ cid, nombreBase, talle, qty, precioUnit });
-      if (cols[idx('Fecha de creaciÃ³n')]) {
-        const totalStr = cols[idx('Total del carrito')] || '0';
-        const total = parseFloat(totalStr.replace(/[$. ]/g,'').replace(',','.')) || 0;
-        carritosMeta[cid] = {
-          total,
-          canal: cols[idx('Canal')] || '',
-          metodoPago: cols[idx('MÃ©todo de pago elegido')] || '',
-        };
-      }
-    }
-    // Agrupar por producto+talle
-    const byProd = {};
-    itemsRaw.forEach(it => {
-      const key = it.nombreBase + '|||' + it.talle;
-      if (!byProd[key]) byProd[key] = { nombreBase: it.nombreBase, talle: it.talle, qty: 0, carritosSet: new Set(), valor: 0 };
-      byProd[key].qty += it.qty;
-      byProd[key].carritosSet.add(it.cid);
-      byProd[key].valor += it.precioUnit * it.qty;
-    });
-    const items = Object.values(byProd).map(v => ({
-      nombreBase: v.nombreBase, talle: v.talle,
-      qty: v.qty, carritos: v.carritosSet.size, valor: v.valor
-    })).sort((a,b) => b.carritos - a.carritos);
-    const totalValor = Object.values(carritosMeta).reduce((s,c) => s + c.total, 0);
-    const porCanal = {};
-    Object.values(carritosMeta).forEach(c => { porCanal[c.canal] = (porCanal[c.canal]||0)+1; });
-    const conPago = Object.values(carritosMeta).filter(c => c.metodoPago).length;
-    return { totalCarritos: Object.keys(carritosMeta).length, items, totalValor, porCanal, conPago };
-  } catch(e) {
-    console.error('Error parseando carritos:', e);
-    return { totalCarritos: 0, items: [], totalValor: 0, porCanal: {}, conPago: 0 };
-  }
-}
-
-function getAbandonDemand(productName, variantName) {
-  if (!abandonData || !abandonData.items) return 0;
-  const tokens = productName.toLowerCase().split(' ').slice(0,3);
-  const match = abandonData.items.find(it =>
-    tokens.every(t => it.nombreBase.toLowerCase().includes(t)) && it.talle === variantName
-  );
-  return match ? match.carritos : 0;
-}
-
-function renderAbandon() {
-  const panel = document.getElementById('abandon-panel');
-  if (!abandonData || !abandonData.totalCarritos) { panel.style.display = 'none'; return; }
-  panel.style.display = 'block';
-  document.getElementById('abandon-count').textContent = abandonData.totalCarritos + ' carritos Â· 
-  await fetch(`${API}/invalidate`).catch(() => {});
-  loadData();
-});
-
-loadData();
-</script>
-</body>
-</html> + fmt(abandonData.totalValor);
-  const canalHtml = Object.entries(abandonData.porCanal).map(([c,n]) => '<span style="font-weight:600">'+c+'</span>: '+n).join(' Â· ');
-  document.getElementById('abandon-metrics').innerHTML =
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:130px">' +
-      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Carritos</div>' +
-      '<div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;color:var(--mocha-dark)">'+abandonData.totalCarritos+'</div>' +
-    '</div>' +
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:160px">' +
-      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Valor perdido</div>' +
-      '<div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;color:var(--mocha-dark)">
-  await fetch(`${API}/invalidate`).catch(() => {});
-  loadData();
-});
-
-loadData();
-</script>
-</body>
-</html>+fmt(abandonData.totalValor)+'</div>' +
-    '</div>' +
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:180px">' +
-      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Llegaron al pago</div>' +
-      '<div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;color:var(--mocha-dark)">'+abandonData.conPago+' <span style="font-size:14px;color:var(--text2)">/ '+abandonData.totalCarritos+'</span></div>' +
-    '</div>' +
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:160px">' +
-      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Canal</div>' +
-      '<div style="font-size:13px;color:var(--text1);margin-top:6px">'+canalHtml+'</div>' +
-    '</div>';
-  abandonFiltrado = [...abandonData.items];
-  renderAbandonCards(abandonFiltrado);
-}
-
-function aplicarFiltrosAbandon() {
-  const search = (document.getElementById('filtro-search-abandon')?.value || '').toLowerCase();
-  if (!abandonData || !abandonData.items) return;
-  abandonFiltrado = abandonData.items.filter(it => {
-    if (search && !it.nombreBase.toLowerCase().includes(search) && !it.talle.includes(search)) return false;
-    return true;
-  });
-  renderAbandonCards(abandonFiltrado);
-}
-
-function resetFiltrosAbandon() {
-  document.getElementById('filtro-search-abandon').value = '';
-  aplicarFiltrosAbandon();
-}
-
-function renderAbandonCards(items) {
-  const el = document.getElementById('abandon-content');
-  if (!items || !items.length) { el.innerHTML = '<div class="no-items">Sin resultados</div>'; return; }
-  // Agrupar por modelo
-  const byModelo = {};
-  items.forEach(it => {
-    if (!byModelo[it.nombreBase]) byModelo[it.nombreBase] = { nombre: it.nombreBase, talles: [], totalCarritos: 0, totalValor: 0 };
-    byModelo[it.nombreBase].talles.push(it);
-    byModelo[it.nombreBase].totalCarritos += it.carritos;
-    byModelo[it.nombreBase].totalValor += it.valor;
-  });
-  const sorted = Object.values(byModelo).sort((a,b) => b.totalCarritos - a.totalCarritos);
-  // Mapa de imÃ¡genes
-  const imgMap = {};
-  if (currentData && currentData.products) {
-    currentData.products.forEach(p => {
-      const img = p.variants?.find(v => v.image)?.image || '';
-      if (img) imgMap[p.name.toLowerCase()] = img;
-    });
-  }
-  el.innerHTML = '<div class="alertas-modelo-grid">' + sorted.map(m => {
-    let img = '';
-    const tokens = m.nombre.toLowerCase().split(' ').slice(0,3);
-    for (const [pname, src] of Object.entries(imgMap)) {
-      if (tokens.every(t => pname.includes(t))) { img = src; break; }
-    }
-    const imgHtml = img
-      ? '<img class="alerta-card-img" src="'+img+'" alt="'+m.nombre+'" loading="lazy" onerror="this.style.display='none'">'
-      : '<div class="alerta-card-img-placeholder">sin imagen</div>';
-    const tallesHtml = m.talles.sort((a,b) => parseInt(a.talle)-parseInt(b.talle)).map(t => {
-      let stockInfo = '';
-      if (currentData && currentData.products) {
-        const prod = currentData.products.find(p => tokens.every(tk => p.name.toLowerCase().includes(tk)));
-        if (prod) {
-          const variant = prod.variants?.find(v => v.variant_name === t.talle);
-          if (variant !== undefined) {
-            stockInfo = variant.stock === 0
-              ? '<br><span style="color:#c0392b;font-size:9px">sin stock</span>'
-              : '<br><span style="color:#27ae60;font-size:9px">'+variant.stock+' ud</span>';
-          }
-        }
-      }
-      return '<div style="display:inline-flex;flex-direction:column;align-items:center;padding:4px 9px;border-radius:8px;background:#fff3e0;border:1px solid #e67e2233;margin:2px;min-width:44px">' +
-        '<span style="font-size:13px;font-weight:700;color:#e67e22">'+t.carritos+'</span>' +
-        '<span style="font-size:10px;color:var(--text3)">T'+t.talle+'</span>' +
-        stockInfo + '</div>';
-    }).join('');
-    return '<div class="alerta-card" style="border-left:3px solid #e67e22">' +
-      imgHtml +
-      '<div class="alerta-card-header">' +
-        '<div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#e67e22;margin-bottom:4px">' +
-          'ð '+m.totalCarritos+' carrito'+(m.totalCarritos>1?'s':'')+' abandonado'+(m.totalCarritos>1?'s':'') +
-        '</div>' +
-        '<div class="alerta-nombre">'+m.nombre+'</div>' +
-        '<div style="font-size:11px;color:var(--text3);margin-top:2px">
-  await fetch(`${API}/invalidate`).catch(() => {});
-  loadData();
-});
-
-loadData();
-</script>
-</body>
-</html>+fmt(m.totalValor)+' en valor perdido</div>' +
-      '</div>' +
-      '<div style="padding:6px 10px 4px;display:flex;flex-wrap:wrap;gap:2px">'+tallesHtml+'</div>' +
-    '</div>';
-  }).join('') + '</div>';
 }
 
 // period-select change handled by onPeriodSelect()
