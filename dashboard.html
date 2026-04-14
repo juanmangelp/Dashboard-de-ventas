@@ -295,11 +295,6 @@ tr:last-child td { border-bottom: none; }
         <span id="csv-label-text">Subir Notificaciones</span>
         <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvLoaded(this)">
       </label>
-      <label class="export-csv-label btn-outline" id="abandon-csv-label" title="Subir CSV de Carritos Abandonados">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="margin-right:4px;vertical-align:-2px"><path d="M3 2h10a1 1 0 011 1v7a1 1 0 01-1 1H9l-3 3v-3H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
-        <span id="abandon-csv-label-text">Subir Carritos</span>
-        <input type="file" id="abandon-csv-input" accept=".csv" style="display:none" onchange="onAbandonCsvLoaded(this)">
-      </label>
       <select id="dias-filtro-csv" title="Período de notificaciones a considerar" onchange="onDiasFiltroChange()" style="font-family:'Jost',sans-serif;font-size:11px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--cream2);color:var(--mocha);cursor:pointer;">
         <option value="7">Notif. 7d</option>
         <option value="14">Notif. 14d</option>
@@ -441,25 +436,6 @@ tr:last-child td { border-bottom: none; }
 
       </div><!-- /estancado-body -->
     </div><!-- /estancado-panel -->
-
-    <!-- Carritos abandonados -->
-    <div class="panel" id="abandon-panel" style="display:none">
-      <div class="panel-title panel-toggle" onclick="togglePanel('abandon')">
-        Carritos abandonados
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="panel-title-count" id="abandon-count"></span>
-          <span class="toggle-arrow">&#9662;</span>
-        </div>
-      </div>
-      <div class="panel-body collapsed" id="abandon-body">
-        <div id="abandon-metrics" style="display:flex;gap:16px;flex-wrap:wrap;padding:1rem 1.2rem 0.5rem"></div>
-        <div class="filtros-bar" style="margin-top:0.5rem">
-          <div class="filtro-group"><span class="filtro-label">Buscar</span><input class="filtro-search" id="filtro-search-abandon" placeholder="Producto o talle..." oninput="aplicarFiltrosAbandon()"></div>
-          <button class="filtros-reset btn-outline" onclick="resetFiltrosAbandon()">Limpiar</button>
-        </div>
-        <div id="abandon-content" style="padding:0.5rem 1.2rem 1rem"></div>
-      </div>
-    </div>
 
     <!-- Tabla detalle -->
     <!-- Panel Reposición por Modelo -->
@@ -680,8 +656,6 @@ tr:last-child td { border-bottom: none; }
 <script>
 const API = window.location.origin;
 let currentData = null;
-let abandonData = null;
-let abandonFiltrado = [];
 let demandCsvContent = null; // base64 content of uploaded CSV
 let demandData = {}; // parsed: "ProductName|||VariantName" -> {total, pendientes}
 let diasFiltroCsvActual = 30;
@@ -933,7 +907,6 @@ function renderAll() {
   renderAlertas(d.products);
   populateFiltros(d.products, d.stagnant || []);
   renderEstancado(d.stagnant || []);
-  renderAbandonFromApi(d);
   renderTable(d.products);
   renderReposicion(d.products);
   renderPedido(d.products);
@@ -984,8 +957,7 @@ function renderAlertas(products) {
       if (!v.variant_name) return;
 
       // Sin stock pero con ventas históricas → urgente
-      const _acA = getAbandonDemand(p.name, v.variant_name);
-      if (v.stock === 0 && (v.historical_rate > 0 || v.rate > 0 || _acA > 0)) {
+      if (v.stock === 0 && (v.historical_rate > 0 || v.rate > 0)) {
         alertasData.push({
           product: p.name,
           variant: v.variant_name,
@@ -1383,11 +1355,10 @@ function renderReposicion(products) {
     p.variants.forEach(v => {
       if (!v.variant_name) return;
       const d = demandData[p.name + '|||' + v.variant_name] || {};
-      const _ac = getAbandonDemand(p.name, v.variant_name);
       talles.push({
         talle: v.variant_name,
         stock: v.stock || 0,
-        pendientes: (d.pendientes || 0) + _ac,
+        pendientes: d.pendientes || 0,
         ventasSem: Math.round((v.historical_rate || v.rate || 0) * 7 * 10) / 10
       });
     });
@@ -1895,138 +1866,6 @@ function imprimirVentas() {
   window.print();
   document.getElementById('estancado-panel').style.display = '';
   document.getElementById('alertas-panel').style.display = '';
-}
-
-// ---- CARRITOS ABANDONADOS ----
-function renderAbandonFromApi(d) {
-  if (!d || !d.abandoned_total_carritos) return;
-  abandonData = {
-    totalCarritos: d.abandoned_total_carritos,
-    totalValor: d.abandoned_total_valor || 0,
-    conPago: d.abandoned_con_pago || 0,
-    porCanal: d.abandoned_por_canal || {},
-    items: (d.abandoned || []).map(a => ({nombreBase:a.product,talle:a.variant,carritos:a.carritos,qty:a.qty,valor:a.valor}))
-  };
-  renderAbandon();
-}
-function onAbandonCsvLoaded(input) {
-  const file=input.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=(e)=>{
-    document.getElementById('abandon-csv-label-text').textContent=file.name.length>18?file.name.substring(0,16)+'...':file.name;
-    document.getElementById('abandon-csv-label').classList.add('loaded');
-    abandonData=parseAbandonCsv(e.target.result);
-    renderAbandon();
-    if(currentData){renderReposicion(currentData.products);renderAlertas(currentData.products);}
-  };
-  reader.readAsDataURL(file);
-}
-function parseAbandonCsv(dataUrl) {
-  try {
-    const base64=dataUrl.split(',')[1];
-    const text=decodeURIComponent(escape(atob(base64)));
-    const lines=text.split('\n').filter(l=>l.trim());
-    const headers=lines[0].replace(/^\uFEFF/,'').split(';').map(h=>h.replace(/"/g,'').trim());
-    const idx=n=>headers.indexOf(n);
-    const meta={}; const raw=[];
-    for(let i=1;i<lines.length;i++){
-      const cols=[];let cur='',inQ=false;
-      for(const ch of lines[i]){if(ch==='"'){inQ=!inQ;}else if(ch===';'&&!inQ){cols.push(cur.trim());cur='';}else cur+=ch;}
-      cols.push(cur.trim());
-      const cid=cols[idx('ID del carrito')];if(!cid)continue;
-      const pn=cols[idx('Nombre del producto')]||'';
-      const qty=parseInt(cols[idx('Cantidad')]||'1')||1;
-      const pr=parseFloat((cols[idx('Precio unitario')]||'0').replace(/[$. ]/g,'').replace(',','.'))||0;
-      const tm=pn.match(/\((\d+)\)/);const talle=tm?tm[1]:'';
-      const nb=pn.replace(/\s*\(\d+\)\s*/g,'').replace(/\s*\*PRE VENTA[^*]*\*\s*/gi,'').trim();
-      if(pn) raw.push({cid,nb,talle,qty,pr});
-      if(cols[idx('Fecha de creaci\xf3n')]){
-        const tot=parseFloat((cols[idx('Total del carrito')]||'0').replace(/[$. ]/g,'').replace(',','.'))||0;
-        meta[cid]={total:tot,canal:cols[idx('Canal')]||'',pago:cols[idx('M\xe9todo de pago elegido')]||''};
-      }
-    }
-    const byP={};
-    raw.forEach(it=>{
-      const k=it.nb+'|||'+it.talle;
-      if(!byP[k]) byP[k]={nb:it.nb,talle:it.talle,qty:0,cs:new Set(),val:0};
-      byP[k].qty+=it.qty;byP[k].cs.add(it.cid);byP[k].val+=it.pr*it.qty;
-    });
-    const items=Object.values(byP).map(v=>({nombreBase:v.nb,talle:v.talle,qty:v.qty,carritos:v.cs.size,valor:v.val})).sort((a,b)=>b.carritos-a.carritos);
-    const tv=Object.values(meta).reduce((s,c)=>s+c.total,0);
-    const pc={};Object.values(meta).forEach(c=>{pc[c.canal]=(pc[c.canal]||0)+1;});
-    return {totalCarritos:Object.keys(meta).length,items,totalValor:tv,porCanal:pc,conPago:Object.values(meta).filter(c=>c.pago).length};
-  }catch(e){return {totalCarritos:0,items:[],totalValor:0,porCanal:{},conPago:0};}
-}
-function getAbandonDemand(pname,vname){
-  if(!abandonData||!abandonData.items) return 0;
-  const toks=pname.toLowerCase().split(' ').slice(0,3);
-  const m=abandonData.items.find(it=>toks.every(t=>it.nombreBase.toLowerCase().includes(t))&&it.talle===vname);
-  return m?m.carritos:0;
-}
-function renderAbandon(){
-  const panel=document.getElementById('abandon-panel');
-  if(!abandonData||!abandonData.totalCarritos){panel.style.display='none';return;}
-  panel.style.display='block';
-  document.getElementById('abandon-count').textContent=abandonData.totalCarritos+' carritos \xb7 
-  await fetch(`${API}/invalidate`).catch(() => {});
-  loadData();
-});
-
-loadData();
-</script>
-</body>
-</html>+fmt(abandonData.totalValor);
-  const cH=Object.entries(abandonData.porCanal).map(([c,n])=>'<span style="font-weight:600">'+c+'</span>: '+n).join(' \xb7 ');
-  document.getElementById('abandon-metrics').innerHTML=
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:130px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Carritos</div><div style="font-family:\'Cormorant Garamond\',serif;font-size:26px;font-weight:500;color:var(--mocha-dark)">'+abandonData.totalCarritos+'</div></div>'+
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:160px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Valor perdido</div><div style="font-family:\'Cormorant Garamond\',serif;font-size:26px;font-weight:500;color:var(--mocha-dark)">
-  await fetch(`${API}/invalidate`).catch(() => {});
-  loadData();
-});
-
-loadData();
-</script>
-</body>
-</html>+fmt(abandonData.totalValor)+'</div></div>'+
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:180px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Llegaron al pago</div><div style="font-family:\'Cormorant Garamond\',serif;font-size:26px;font-weight:500;color:var(--mocha-dark)">'+abandonData.conPago+' <span style="font-size:14px;color:var(--text2)">/ '+abandonData.totalCarritos+'</span></div></div>'+
-    '<div style="background:var(--cream2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;min-width:160px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Canal</div><div style="font-size:13px;color:var(--text1);margin-top:6px">'+cH+'</div></div>';
-  abandonFiltrado=[...abandonData.items];
-  renderAbandonCards(abandonFiltrado);
-}
-function aplicarFiltrosAbandon(){
-  const s=(document.getElementById('filtro-search-abandon')?.value||'').toLowerCase();
-  if(!abandonData||!abandonData.items) return;
-  abandonFiltrado=abandonData.items.filter(it=>!s||it.nombreBase.toLowerCase().includes(s)||it.talle.includes(s));
-  renderAbandonCards(abandonFiltrado);
-}
-function resetFiltrosAbandon(){document.getElementById('filtro-search-abandon').value='';aplicarFiltrosAbandon();}
-function renderAbandonCards(items){
-  const el=document.getElementById('abandon-content');
-  if(!items||!items.length){el.innerHTML='<div class="no-items">Sin resultados</div>';return;}
-  const byM={};
-  items.forEach(it=>{if(!byM[it.nombreBase])byM[it.nombreBase]={nombre:it.nombreBase,talles:[],tc:0,tv:0};byM[it.nombreBase].talles.push(it);byM[it.nombreBase].tc+=it.carritos;byM[it.nombreBase].tv+=it.valor;});
-  const sorted=Object.values(byM).sort((a,b)=>b.tc-a.tc);
-  const imgMap={};
-  if(currentData&&currentData.products){currentData.products.forEach(p=>{const img=p.variants?.find(v=>v.image)?.image||'';if(img)imgMap[p.name.toLowerCase()]=img;});}
-  el.innerHTML='<div class="alertas-modelo-grid">'+sorted.map(m=>{
-    const toks=m.nombre.toLowerCase().split(' ').slice(0,3);
-    let img='';for(const[pn,src] of Object.entries(imgMap)){if(toks.every(t=>pn.includes(t))){img=src;break;}}
-    const iH=img?'<img class="alerta-card-img" src="'+img+'" alt="'+m.nombre+'" loading="lazy" onerror="this.style.display=\'none\'">':'<div class="alerta-card-img-placeholder">sin imagen</div>';
-    const tH=m.talles.sort((a,b)=>parseInt(a.talle)-parseInt(b.talle)).map(t=>{
-      let si='';
-      if(currentData&&currentData.products){const pr=currentData.products.find(p=>toks.every(tk=>p.name.toLowerCase().includes(tk)));if(pr){const vr=pr.variants?.find(v=>v.variant_name===t.talle);if(vr!==undefined)si='<br><span style="font-size:9px;color:'+(vr.stock===0?'#c0392b':'#27ae60')+'">'+(vr.stock===0?'sin stock':vr.stock+' ud')+'</span>';}}
-      return '<div style="display:inline-flex;flex-direction:column;align-items:center;padding:4px 9px;border-radius:8px;background:#fff3e0;border:1px solid #e67e2233;margin:2px;min-width:44px"><span style="font-size:13px;font-weight:700;color:#e67e22">'+t.carritos+'</span><span style="font-size:10px;color:var(--text3)">T'+t.talle+'</span>'+si+'</div>';
-    }).join('');
-    return '<div class="alerta-card" style="border-left:3px solid #e67e22">'+iH+'<div class="alerta-card-header"><div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#e67e22;margin-bottom:4px">\uD83D\uDED2 '+m.tc+' carrito'+(m.tc>1?'s':'')+' abandonado'+(m.tc>1?'s':'')+'</div><div class="alerta-nombre">'+m.nombre+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">
-  await fetch(`${API}/invalidate`).catch(() => {});
-  loadData();
-});
-
-loadData();
-</script>
-</body>
-</html>+fmt(m.tv)+' en valor perdido</div></div><div style="padding:6px 10px 4px;display:flex;flex-wrap:wrap;gap:2px">'+tH+'</div></div>';
-  }).join('')+'</div>';
 }
 
 // period-select change handled by onPeriodSelect()
