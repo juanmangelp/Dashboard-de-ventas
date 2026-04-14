@@ -57,7 +57,7 @@ def drive_load_cache():
     try:
         gist_id = _find_gist_id()
         if not gist_id:
-            print("  [Gist] Sin caché previo")
+            print("  [Gist] Sin cachÃ© previo")
             return None
         gist = _gist_request("GET", f"https://api.github.com/gists/{gist_id}")
 
@@ -66,7 +66,7 @@ def drive_load_cache():
         req = Request(raw_url, headers={"Authorization": f"token {GITHUB_TOKEN}", "User-Agent": "SanPretta-Dashboard"})
         with urlopen(req) as resp:
             data = json.loads(resp.read())
-        print(f"  [Gist] Caché cargado OK ({len(data.get('products', []))} productos)")
+        print(f"  [Gist] CachÃ© cargado OK ({len(data.get('products', []))} productos)")
 
         # Load raw orders if available (avoids re-fetching from Tiendanube on startup)
         if "raw_orders.json" in gist["files"]:
@@ -82,13 +82,13 @@ def drive_load_cache():
                 fresh_products = fetch_products()
                 _raw_cache["products"] = fresh_products
                 _raw_cache["variant_map"], _raw_cache["product_names"] = build_variant_map(fresh_products)
-                print(f"  [Gist] Órdenes crudas: {len(_raw_cache['all_orders'])} · Productos actualizados: {len(fresh_products)}")
+                print(f"  [Gist] Ãrdenes crudas: {len(_raw_cache['all_orders'])} Â· Productos actualizados: {len(fresh_products)}")
             except Exception as e:
-                print(f"  [Gist] No se pudieron cargar órdenes crudas: {e}")
+                print(f"  [Gist] No se pudieron cargar Ã³rdenes crudas: {e}")
 
         return data
     except Exception as e:
-        print(f"  [Gist] Error cargando caché: {e}")
+        print(f"  [Gist] Error cargando cachÃ©: {e}")
         return None
 
 def drive_save_cache(data):
@@ -107,7 +107,7 @@ def drive_save_cache(data):
                 "last_updated": _raw_cache["last_updated"]
             }
             raw_content = json.dumps(raw_data, ensure_ascii=False)
-            print(f"  [Gist] Guardando {len(_raw_cache['all_orders'])} órdenes crudas")
+            print(f"  [Gist] Guardando {len(_raw_cache['all_orders'])} Ã³rdenes crudas")
 
         files = {"cache.json": {"content": summary_content}}
         if raw_content:
@@ -116,7 +116,7 @@ def drive_save_cache(data):
         gist_id = _find_gist_id()
         if gist_id:
             _gist_request("PATCH", f"https://api.github.com/gists/{gist_id}", {"files": files})
-            print("  [Gist] Caché actualizado en GitHub")
+            print("  [Gist] CachÃ© actualizado en GitHub")
         else:
             result = _gist_request("POST", "https://api.github.com/gists", {
                 "description": GIST_DESCRIPTION,
@@ -124,9 +124,9 @@ def drive_save_cache(data):
                 "files": files
             })
             _gist_id = result["id"]
-            print(f"  [Gist] Caché creado en GitHub: {_gist_id}")
+            print(f"  [Gist] CachÃ© creado en GitHub: {_gist_id}")
     except Exception as e:
-        print(f"  [Gist] Error guardando caché: {e}")
+        print(f"  [Gist] Error guardando cachÃ©: {e}")
 
 
 STORE_ID = "87884"
@@ -155,7 +155,7 @@ LOGIN_HTML = '''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>San Pretta · Acceso</title>
+<title>San Pretta Â· Acceso</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Jost:wght@300;400&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -178,7 +178,7 @@ button:hover { background: #9c7b6e; }
   <form method="POST" action="/login">
     <label>Usuario</label>
     <input type="text" name="username" autocomplete="username" required>
-    <label>Contraseña</label>
+    <label>ContraseÃ±a</label>
     <input type="password" name="password" autocomplete="current-password" required>
     <button type="submit">Ingresar</button>
     {error}
@@ -226,7 +226,7 @@ def fetch_orders(days=None, date_from=None, date_to=None, progress_range=(0,50),
         if not isinstance(data, list) or not data:
             break
         results.extend(data)
-        # Estimate progress — we don't know total, so use pages as proxy (cap at 80% of range)
+        # Estimate progress â we don't know total, so use pages as proxy (cap at 80% of range)
         est = min(p_start + int((page / max(page+2, 5)) * (p_end - p_start) * 0.9), p_end - 2)
         set_progress(est, f"{label}: {len(results)} pedidos cargados")
         if len(data) < 200:
@@ -295,7 +295,7 @@ def build_variant_map(products):
             # Use updated_at when stock > 0: reflects when stock was last added
             # This avoids marking recently restocked items as stagnant
             v_updated = v.get("updated_at", "") or v_created
-            v_ref_date = v_updated if stock > 0 else v_created
+            v_ref_date = v_created  # Siempre usar fecha de creación para days_in_catalog
             v_price = safe_float(v.get("price")) or p_price
             v_promo = safe_float(v.get("promotional_price")) or p_promo
             if v_promo >= v_price: v_promo = 0.0
@@ -334,7 +334,7 @@ def _calc_historical_rate(dates):
     except:
         return 0.0
 
-# Raw data cache — fetched once, reused for any period
+# Raw data cache â fetched once, reused for any period
 _raw_cache = {"products": None, "all_orders": None, "variant_map": None, "product_names": None, "last_updated": None}
 
 def fetch_raw_data(incremental=False):
@@ -378,7 +378,7 @@ def fetch_raw_data(incremental=False):
         _raw_cache["last_updated"] = now_str
 
 def compute_summary(days=None, date_from=None, date_to=None):
-    """Compute summary from _raw_cache for any period — no API calls."""
+    """Compute summary from _raw_cache for any period â no API calls."""
     products = _raw_cache["products"]
     all_orders = _raw_cache["all_orders"]
     variant_map = _raw_cache["variant_map"]
@@ -605,15 +605,15 @@ def build_export_xlsx(summary_data, demand):
 
     # Title
     ws.merge_cells("A1:I1")
-    ws["A1"] = "San Pretta · Stock y Demanda · " + datetime.now().strftime("%d/%m/%Y")
+    ws["A1"] = "San Pretta Â· Stock y Demanda Â· " + datetime.now().strftime("%d/%m/%Y")
     ws["A1"].font = Font(name="Arial", bold=True, size=13, color=brown_dark)
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
     ws["A1"].fill = PatternFill("solid", fgColor="F5EDE6")
     ws.row_dimensions[1].height = 28
 
     # Headers row 3
-    headers = ["Artículo", "Talle", "Stock Restante", "Días sin Ventas",
-               "Días en Catálogo", "Notif. Totales", "Notif. Pendientes", "Índice Demanda", "Alerta"]
+    headers = ["ArtÃ­culo", "Talle", "Stock Restante", "DÃ­as sin Ventas",
+               "DÃ­as en CatÃ¡logo", "Notif. Totales", "Notif. Pendientes", "Ãndice Demanda", "Alerta"]
     col_widths = [40, 8, 13, 13, 14, 13, 15, 13, 20]
 
     for col_idx, (h, w) in enumerate(zip(headers, col_widths), 1):
@@ -674,7 +674,7 @@ def build_export_xlsx(summary_data, demand):
                 alerta = "Sin movimiento"
                 row_fill = PatternFill("solid", fgColor="F5F5F5")
             elif notif_total > 0:
-                alerta = "Con interés"
+                alerta = "Con interÃ©s"
                 row_fill = None
             else:
                 alerta = ""
@@ -697,7 +697,7 @@ def build_export_xlsx(summary_data, demand):
 
     # Sheet 2: Demand ranking
     ws2 = wb.create_sheet("Ranking Demanda")
-    h2 = ["Artículo", "Talle", "Notif. Totales", "Notif. Pendientes"]
+    h2 = ["ArtÃ­culo", "Talle", "Notif. Totales", "Notif. Pendientes"]
     w2 = [40, 8, 14, 16]
     for col_idx, (h, w) in enumerate(zip(h2, w2), 1):
         cell = ws2.cell(row=1, column=col_idx, value=h)
@@ -722,7 +722,7 @@ def build_export_xlsx(summary_data, demand):
 
     # Sheet 3: Stock quieto (estancado)
     ws3 = wb.create_sheet("Stock Quieto")
-    h3 = ["Artículo", "Talle", "Stock", "Precio", "Precio Promo", "Días en Catálogo", "Estado"]
+    h3 = ["ArtÃ­culo", "Talle", "Stock", "Precio", "Precio Promo", "DÃ­as en CatÃ¡logo", "Estado"]
     w3 = [40, 8, 8, 12, 13, 16, 14]
     for col_idx, (h, w) in enumerate(zip(h3, w3), 1):
         cell = ws3.cell(row=1, column=col_idx, value=h)
@@ -732,7 +732,7 @@ def build_export_xlsx(summary_data, demand):
         cell.border = border
         ws3.column_dimensions[get_column_letter(col_idx)].width = w
 
-    tipo_label = {"critico": "Crítico", "observacion": "Observación", "nuevo": "Nuevo"}
+    tipo_label = {"critico": "CrÃ­tico", "observacion": "ObservaciÃ³n", "nuevo": "Nuevo"}
     tipo_fill = {
         "critico": PatternFill("solid", fgColor="FAEAEA"),
         "observacion": PatternFill("solid", fgColor="FFF3E0"),
@@ -769,14 +769,14 @@ def build_export_xlsx(summary_data, demand):
     ws3.freeze_panes = "A2"
 
 
-    # Sheet 4: Reposición Sugerida
-    ws4 = wb.create_sheet("Reposición Sugerida")
+    # Sheet 4: ReposiciÃ³n Sugerida
+    ws4 = wb.create_sheet("ReposiciÃ³n Sugerida")
     horizonte = summary_data.get("horizonte_reposicion", 60)
     dias_filtro_csv = summary_data.get("dias_filtro_csv", None)
-    filtro_label = f"últimos {dias_filtro_csv}d" if dias_filtro_csv else "todo el CSV"
+    filtro_label = f"Ãºltimos {dias_filtro_csv}d" if dias_filtro_csv else "todo el CSV"
 
-    h4 = ["Artículo", "Talle", "¿Reponer?", "Unidades a Reponer",
-          "Stock Actual", f"Ventas Proy. ({horizonte}d)", f"Notif. Pendientes ({filtro_label})", "Prioridad", "Razón"]
+    h4 = ["ArtÃ­culo", "Talle", "Â¿Reponer?", "Unidades a Reponer",
+          "Stock Actual", f"Ventas Proy. ({horizonte}d)", f"Notif. Pendientes ({filtro_label})", "Prioridad", "RazÃ³n"]
     w4 = [40, 8, 10, 18, 12, 18, 24, 12, 55]
     for col_idx, (h, w) in enumerate(zip(h4, w4), 1):
         cell = ws4.cell(row=1, column=col_idx, value=h)
@@ -830,14 +830,14 @@ def build_export_xlsx(summary_data, demand):
                 razones.append("sin stock actualmente")
             elif stock > 0 and reposicion > 0:
                 razones.append(f"stock actual cubre solo parte de la demanda")
-            razon = " · ".join(razones) if razones else "—"
+            razon = " Â· ".join(razones) if razones else "â"
 
             if not reponer and demanda_reprimida == 0 and ventas_proyectadas == 0:
                 continue
 
             reposicion_rows.append({
                 "pname": pname, "vname": vname,
-                "reponer": "Sí" if reponer else "No",
+                "reponer": "SÃ­" if reponer else "No",
                 "reposicion": reposicion if reponer else 0,
                 "stock": stock, "ventas_proy": ventas_proyectadas,
                 "demanda_rep": demanda_reprimida or None,
@@ -898,9 +898,9 @@ def _init_cache_from_drive():
         _cache[key] = data
         print(f"  [Cache] Cargado desde Gist: key={key}, last_updated={_raw_cache['last_updated']}")
 
-        # Si tenemos órdenes en caché, hacer fetch incremental para actualizarlas
+        # Si tenemos Ã³rdenes en cachÃ©, hacer fetch incremental para actualizarlas
         if _raw_cache["all_orders"] is not None and _raw_cache["last_updated"]:
-            print(f"  [Cache] Actualizando órdenes desde {_raw_cache['last_updated']}...")
+            print(f"  [Cache] Actualizando Ã³rdenes desde {_raw_cache['last_updated']}...")
             try:
                 fetch_raw_data(incremental=True)
                 _cache.clear()  # Invalidar resumen viejo
@@ -909,9 +909,9 @@ def _init_cache_from_drive():
                 to_save = dict(summary)
                 to_save["_last_updated"] = _raw_cache.get("last_updated", "")
                 drive_save_cache(to_save)
-                print("  [Cache] Actualización incremental completada")
+                print("  [Cache] ActualizaciÃ³n incremental completada")
             except Exception as e:
-                print(f"  [Cache] Error en actualización incremental: {e}")
+                print(f"  [Cache] Error en actualizaciÃ³n incremental: {e}")
     else:
         print("  [Cache] Sin datos previos en Gist, primera carga completa")
 
@@ -921,7 +921,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
     def do_HEAD(self):
-        # UptimeRobot y otros monitores usan HEAD — responder 200 OK
+        # UptimeRobot y otros monitores usan HEAD â responder 200 OK
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_cors()
@@ -953,7 +953,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
-                html = LOGIN_HTML.replace("{error}", '<div class="error">Usuario o contraseña incorrectos</div>')
+                html = LOGIN_HTML.replace("{error}", '<div class="error">Usuario o contraseÃ±a incorrectos</div>')
                 self.wfile.write(html.encode())
         elif self.path == "/export_upload":
             if not check_session(self):
@@ -969,7 +969,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(LOGIN_HTML.replace("{error}", "").encode())
             return
-        # Public: keepalive - mantiene el caché caliente
+        # Public: keepalive - mantiene el cachÃ© caliente
         if self.path == "/keepalive":
             status = {"ok": True, "cache_keys": list(_cache.keys()), "has_raw": _raw_cache["all_orders"] is not None}
             if _raw_cache["all_orders"] is None:
@@ -1235,7 +1235,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"\n  Dashboard San Pretta")
-    print(f"  Cargando caché desde Drive...")
+    print(f"  Cargando cachÃ© desde Drive...")
     _init_cache_from_drive()
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"  Abri http://localhost:{PORT} en tu browser")
