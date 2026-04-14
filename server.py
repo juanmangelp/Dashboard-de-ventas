@@ -1022,7 +1022,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_response(403); self.end_headers(); return
             self.serve_export_upload()
         else:
-            self.send_response(404); self.end_headers()        else:
+            self.send_response(404); self.end_headers()
+        else:
             self.send_response(404); self.end_headers()
     def serve_file(self, filename, content_type):
         fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
