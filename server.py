@@ -295,7 +295,7 @@ def build_variant_map(products):
             # Use updated_at when stock > 0: reflects when stock was last added
             # This avoids marking recently restocked items as stagnant
             v_updated = v.get("updated_at", "") or v_created
-            v_ref_date = v_updated if stock > 0 else v_created
+            v_ref_date = v_created
             v_price = safe_float(v.get("price")) or p_price
             v_promo = safe_float(v.get("promotional_price")) or p_promo
             if v_promo >= v_price: v_promo = 0.0
