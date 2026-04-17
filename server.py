@@ -295,7 +295,7 @@ def build_variant_map(products):
             # Use updated_at when stock > 0: reflects when stock was last added
             # This avoids marking recently restocked items as stagnant
             v_updated = v.get("updated_at", "") or v_created
-            v_ref_date = v_created
+            v_ref_date = v_updated if stock > 0 else v_created
             v_price = safe_float(v.get("price")) or p_price
             v_promo = safe_float(v.get("promotional_price")) or p_promo
             if v_promo >= v_price: v_promo = 0.0
@@ -336,6 +336,61 @@ def _calc_historical_rate(dates):
 
 # Raw data cache — fetched once, reused for any period
 _raw_cache = {"products": None, "all_orders": None, "variant_map": None, "product_names": None, "last_updated": None}
+_abandoned_cache = {"data": None, "fetched_at": None}
+
+def fetch_abandoned_checkouts():
+    """Fetch abandoned checkouts from last 30 days (API limit)."""
+    import time
+    now = time.time()
+    # Cache for 30 minutes
+    if _abandoned_cache["data"] is not None and _abandoned_cache["fetched_at"] and (now - _abandoned_cache["fetched_at"]) < 1800:
+        return _abandoned_cache["data"]
+
+    results = []
+    page = 1
+    while True:
+        url = f"{BASE_URL}/checkouts?per_page=200&page={page}"
+        try:
+            resp = api_get(url)
+            if not resp or not isinstance(resp, list):
+                break
+            results.extend(resp)
+            if len(resp) < 200:
+                break
+            page += 1
+        except Exception as e:
+            print(f"  [Checkouts] Error: {e}")
+            break
+
+    # Aggregate by product name + variant
+    agg = {}
+    for checkout in results:
+        for prod in checkout.get("products", []):
+            name = normalizeName(prod.get("name", ""))
+            variant_vals = prod.get("variant_values", [])
+            variant = " / ".join(variant_vals) if variant_vals else ""
+            key = f"{name}|||{variant}"
+            price = safe_float(prod.get("price", 0))
+            qty = int(prod.get("quantity", 1) or 1)
+            if key not in agg:
+                agg[key] = {
+                    "product": name,
+                    "variant": variant,
+                    "count": 0,
+                    "total_qty": 0,
+                    "monto_perdido": 0.0,
+                    "image": prod.get("image", {}).get("src", "") if prod.get("image") else ""
+                }
+            agg[key]["count"] += 1
+            agg[key]["total_qty"] += qty
+            agg[key]["monto_perdido"] += price * qty
+
+    data = sorted(agg.values(), key=lambda x: x["total_qty"], reverse=True)
+    _abandoned_cache["data"] = data
+    _abandoned_cache["fetched_at"] = now
+    print(f"  [Checkouts] {len(results)} carritos abandonados, {len(data)} productos únicos")
+    return data
+
 
 def fetch_raw_data(incremental=False):
     """Fetch products and order history from API. If incremental=True and we have
@@ -1017,6 +1072,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_cors()
             self.end_headers()
             self.wfile.write(data)
+        elif self.path.startswith("/abandoned"): self.serve_abandoned()
         elif self.path.startswith("/summary"): self.serve_summary()
         elif self.path == "/invalidate":
             _cache.clear()
@@ -1192,6 +1248,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_cors()
         self.end_headers()
         self.wfile.write(xlsx_bytes)
+
+    def serve_abandoned(self):
+        """Return aggregated abandoned checkouts data."""
+        try:
+            data = fetch_abandoned_checkouts()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(json.dumps({"items": data, "total": len(data)}).encode())
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
 
     def serve_summary(self):
         qs = parse_qs(urlparse(self.path).query)
