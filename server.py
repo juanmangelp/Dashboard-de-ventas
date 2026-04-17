@@ -366,7 +366,9 @@ def fetch_abandoned_checkouts():
     agg = {}
     for checkout in results:
         for prod in checkout.get("products", []):
-            name = normalizeName(prod.get("name", ""))
+            raw_name = prod.get("name", "") or ""
+            import re as _re
+            name = _re.sub(r'\s*\*PRE VENTA[^*]*\*\s*', '', raw_name, flags=_re.IGNORECASE).replace('"', '').strip()
             variant_vals = prod.get("variant_values", [])
             variant = " / ".join(variant_vals) if variant_vals else ""
             key = f"{name}|||{variant}"
@@ -575,6 +577,14 @@ def compute_summary(days=None, date_from=None, date_to=None):
 
 def build_summary(days=None, date_from=None, date_to=None):
     """Fetch raw data if needed, then compute summary."""
+    import time as _time
+    # Wait for background init to finish (up to 120s) before deciding to fetch
+    waited = 0
+    while _init_in_progress and waited < 120:
+        _time.sleep(1)
+        waited += 1
+    if waited:
+        print(f"  [Build] Esperé {waited}s al init background")
     if _raw_cache["all_orders"] is None:
         fetch_raw_data()
     set_progress(92, "Calculando resumen...")
@@ -943,32 +953,38 @@ def build_export_xlsx(summary_data, demand):
 
 
 _cache = {}
+_init_in_progress = False
 
 def _init_cache_from_drive():
     """Load cache from Gist on startup, then do incremental update to get fresh data."""
-    data = drive_load_cache()
-    if data:
-        days = data.get("days", 90)
-        key = f"s{days}"
-        _cache[key] = data
-        print(f"  [Cache] Cargado desde Gist: key={key}, last_updated={_raw_cache['last_updated']}")
+    global _init_in_progress
+    _init_in_progress = True
+    try:
+        data = drive_load_cache()
+        if data:
+            days = data.get("days", 90)
+            key = f"s{days}"
+            _cache[key] = data
+            print(f"  [Cache] Cargado desde Gist: key={key}, last_updated={_raw_cache['last_updated']}")
 
-        # Si tenemos órdenes en caché, hacer fetch incremental para actualizarlas
-        if _raw_cache["all_orders"] is not None and _raw_cache["last_updated"]:
-            print(f"  [Cache] Actualizando órdenes desde {_raw_cache['last_updated']}...")
-            try:
-                fetch_raw_data(incremental=True)
-                _cache.clear()  # Invalidar resumen viejo
-                summary = compute_summary(days=90)
-                _cache["s90"] = summary
-                to_save = dict(summary)
-                to_save["_last_updated"] = _raw_cache.get("last_updated", "")
-                drive_save_cache(to_save)
-                print("  [Cache] Actualización incremental completada")
-            except Exception as e:
-                print(f"  [Cache] Error en actualización incremental: {e}")
-    else:
-        print("  [Cache] Sin datos previos en Gist, primera carga completa")
+            # Si tenemos órdenes en caché, hacer fetch incremental para actualizarlas
+            if _raw_cache["all_orders"] is not None and _raw_cache["last_updated"]:
+                print(f"  [Cache] Actualizando órdenes desde {_raw_cache['last_updated']}...")
+                try:
+                    fetch_raw_data(incremental=True)
+                    _cache.clear()  # Invalidar resumen viejo
+                    summary = compute_summary(days=90)
+                    _cache["s90"] = summary
+                    to_save = dict(summary)
+                    to_save["_last_updated"] = _raw_cache.get("last_updated", "")
+                    drive_save_cache(to_save)
+                    print("  [Cache] Actualización incremental completada")
+                except Exception as e:
+                    print(f"  [Cache] Error en actualización incremental: {e}")
+        else:
+            print("  [Cache] Sin datos previos en Gist, primera carga completa")
+    finally:
+        _init_in_progress = False
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -1308,7 +1324,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 if __name__ == "__main__":
     print(f"\n  Dashboard San Pretta")
     print(f"  Cargando caché desde Drive...")
-    _init_cache_from_drive()
+    import threading as _threading
+    init_thread = _threading.Thread(target=_init_cache_from_drive, daemon=True)
+    init_thread.start()
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"  Abri http://localhost:{PORT} en tu browser")
     print(f"  Ctrl+C para detener\n")
